@@ -1,0 +1,197 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+
+import { requireUser } from "@/lib/auth/session";
+import {
+  createDevice,
+  disconnectDevice,
+  removeDevice,
+  requestPairing,
+} from "@/lib/device/service";
+import {
+  createDeviceSchema,
+  deviceActionSchema,
+  pairDeviceSchema,
+} from "@/lib/validation/device";
+import {
+  RATE_LIMITS,
+  enforceRateLimit,
+} from "@/lib/security/rate-limit";
+import { hashForLogging } from "@/lib/security/crypto";
+import { isAppError, toAppError } from "@/lib/errors";
+import { logger } from "@/lib/observability/logger";
+
+/**
+ * Device server actions.
+ *
+ * Thin by design: validate, rate limit, delegate to the device service. The
+ * caller's identity always comes from `requireUser()`.
+ */
+
+export type DeviceActionState =
+  | { status: "idle" }
+  | { status: "success"; message: string; deviceId?: string }
+  | {
+      status: "error";
+      message: string;
+      fieldErrors?: Record<string, string[]>;
+    };
+
+async function clientIp(): Promise<string> {
+  const headerList = await headers();
+  return (
+    headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headerList.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+/** Maps a thrown error onto safe form state. Internals stay in the logs. */
+function toState(error: unknown): DeviceActionState {
+  const appError = toAppError(error);
+
+  if (!isAppError(error) || appError.code === "INTERNAL_ERROR") {
+    logger("device").error(
+      { event: "device.action_failed", reason: appError.internalMessage },
+      "Device action failed",
+    );
+  }
+
+  return {
+    status: "error",
+    message: appError.message,
+    ...(appError.fieldErrors ? { fieldErrors: appError.fieldErrors } : {}),
+  };
+}
+
+export async function createDeviceAction(
+  _previous: DeviceActionState,
+  formData: FormData,
+): Promise<DeviceActionState> {
+  try {
+    const actor = await requireUser();
+
+    const parsed = createDeviceSchema.safeParse({
+      label: formData.get("label"),
+    });
+    if (!parsed.success) {
+      return {
+        status: "error",
+        message: "Check the device name and try again.",
+        fieldErrors: { label: ["Enter a name between 2 and 48 characters"] },
+      };
+    }
+
+    await enforceRateLimit(RATE_LIMITS.deviceCreate, actor.id);
+
+    const { deviceId } = await createDevice({
+      userId: actor.id,
+      label: parsed.data.label,
+    });
+
+    revalidatePath("/dashboard/devices");
+
+    return {
+      status: "success",
+      message: "Device slot created. Connect it to WhatsApp to start sending.",
+      deviceId,
+    };
+  } catch (error) {
+    return toState(error);
+  }
+}
+
+export async function pairDeviceAction(
+  _previous: DeviceActionState,
+  formData: FormData,
+): Promise<DeviceActionState> {
+  try {
+    const actor = await requireUser();
+
+    const parsed = pairDeviceSchema.safeParse({
+      deviceId: formData.get("deviceId"),
+      method: formData.get("method"),
+      phoneNumber: formData.get("phoneNumber") ?? undefined,
+    });
+
+    if (!parsed.success) {
+      return {
+        status: "error",
+        message: "Check the pairing details and try again.",
+        fieldErrors: { phoneNumber: ["Enter a valid WhatsApp number"] },
+      };
+    }
+
+    const ip = await clientIp();
+    await enforceRateLimit(
+      RATE_LIMITS.devicePairing,
+      `${actor.id}:${hashForLogging(ip)}`,
+    );
+
+    await requestPairing({
+      userId: actor.id,
+      deviceId: parsed.data.deviceId,
+      method: parsed.data.method,
+      ...(parsed.data.phoneNumber
+        ? { phoneNumber: parsed.data.phoneNumber }
+        : {}),
+    });
+
+    revalidatePath("/dashboard/devices");
+
+    return {
+      status: "success",
+      message:
+        parsed.data.method === "QR"
+          ? "Scan the QR code with WhatsApp on your phone."
+          : "Enter the pairing code in WhatsApp on your phone.",
+    };
+  } catch (error) {
+    return toState(error);
+  }
+}
+
+export async function deviceControlAction(
+  _previous: DeviceActionState,
+  formData: FormData,
+): Promise<DeviceActionState> {
+  try {
+    const actor = await requireUser();
+
+    const parsed = deviceActionSchema.safeParse({
+      deviceId: formData.get("deviceId"),
+      action: formData.get("action"),
+    });
+
+    if (!parsed.success) {
+      return { status: "error", message: "That action is not available." };
+    }
+
+    switch (parsed.data.action) {
+      case "DISCONNECT":
+        await disconnectDevice({
+          userId: actor.id,
+          deviceId: parsed.data.deviceId,
+        });
+        break;
+      case "RECONNECT":
+        await requestPairing({
+          userId: actor.id,
+          deviceId: parsed.data.deviceId,
+          method: "QR",
+        });
+        break;
+      case "REMOVE":
+        await removeDevice({ userId: actor.id, deviceId: parsed.data.deviceId });
+        break;
+    }
+
+    revalidatePath("/dashboard/devices");
+
+    return { status: "success", message: "Device updated." };
+  } catch (error) {
+    return toState(error);
+  }
+}

@@ -1,0 +1,696 @@
+// WhatsApp Blast SaaS — Prisma schema
+// Rules reference: RULES.md §20 (Database Rules)
+// - UTC timestamps only (MySQL DATETIME(3) via Prisma DateTime, always stored UTC).
+// - Decimal for every monetary value.
+// - Unique constraints on email, setting keys, ledger idempotency keys,
+//   (targetListId, normalizedNumber) and (campaignId, normalizedNumber).
+// - Archive / soft-delete instead of hard delete for financial, audit,
+//   delivery and withdrawal history.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum DeviceStatus {
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+  ERROR
+}
+
+enum TargetListStatus {
+  UPLOADING
+  VALIDATING
+  PARSING
+  IMPORTING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  PARTIAL_FAILED
+  CANCELLED
+  EXPIRED
+  ARCHIVED
+}
+
+enum DeviceModePolicy {
+  SINGLE_DEVICE
+  ALL_DEVICES
+}
+
+enum AssignmentPolicy {
+  ALL_ELIGIBLE
+  SELECTED_USERS
+}
+
+enum BlastJobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  PARTIAL_FAILED
+  CANCELLED
+  FAILED
+}
+
+/// Recipient delivery state machine (RULES.md §12).
+enum RecipientStatus {
+  PENDING
+  CLAIMED
+  SENDING
+  SENT
+  RETRYABLE_FAILED
+  FAILED
+  CANCELLED
+  SKIPPED
+  UNKNOWN
+  RECONCILIATION_REQUIRED
+}
+
+enum LedgerType {
+  EARNING
+  WITHDRAWAL_HOLD
+  WITHDRAWAL_RELEASE
+  WITHDRAWAL_SETTLEMENT
+  ADJUSTMENT_CREDIT
+  ADJUSTMENT_DEBIT
+  WITHDRAWAL_FEE
+}
+
+enum LedgerStatus {
+  PENDING
+  SETTLED
+  REVERSED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  PAID
+  REJECTED
+  CANCELLED
+}
+
+enum WalletStatus {
+  ACTIVE
+  PENDING_REVIEW
+  LOCKED
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ActorRole {
+  ADMIN
+  USER
+  SYSTEM
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role       @default(USER)
+  status       UserStatus @default(ACTIVE)
+  timezone     String     @default("UTC")
+
+  /// Incremented on password change, suspension and admin force-logout.
+  /// Issued JWTs carry this value and are rejected once it no longer matches.
+  sessionEpoch Int @default(0)
+
+  lastLoginAt DateTime?
+  suspendedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  devices              Device[]
+  blastJobs            BlastJob[]
+  ledgerEntries        LedgerEntry[]
+  withdrawals          Withdrawal[]
+  wallet               Wallet?
+  walletChangeRequests WalletChangeRequest[]
+  campaignAssignments  CampaignAssignment[]
+  auditLogs            AuditLog[]            @relation("AuditActor")
+  securityLogs         SecurityLog[]
+  uploadedTargetLists  TargetList[]          @relation("TargetListUploader")
+  createdCampaigns     Campaign[]            @relation("CampaignCreator")
+  settingsUpdated      Setting[]             @relation("SettingUpdater")
+
+  @@index([role, status])
+  @@index([status, createdAt])
+  @@index([deletedAt])
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp devices
+// ---------------------------------------------------------------------------
+
+model Device {
+  id     String       @id @default(cuid())
+  userId String
+  label  String
+  status DeviceStatus @default(DISCONNECTED)
+
+  /// Canonical E.164 number (digits only, no `+`) reported by WhatsApp once paired.
+  phoneNumber String? @db.VarChar(24)
+
+  /// Encrypted `creds.json` payload. Never leaves the server.
+  credentialsCiphertext String? @db.Text
+
+  lastConnectedAt   DateTime?
+  lastSeenAt        DateTime?
+  expiresAt         DateTime?
+  reconnectAttempts Int       @default(0)
+  lastErrorCode     String?   @db.VarChar(64)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authStates DeviceAuthState[]
+  blastJobs  BlastJob[]
+
+  @@unique([userId, phoneNumber])
+  @@index([userId, status])
+  @@index([status, lastSeenAt])
+  @@index([deletedAt])
+}
+
+/// Encrypted Baileys auth-state entries (creds + signal keys) kept in the
+/// database so workers can restore sessions without shared disk storage.
+model DeviceAuthState {
+  id         String   @id @default(cuid())
+  deviceId   String
+  stateKey   String   @db.VarChar(191)
+  ciphertext String   @db.Text
+  updatedAt  DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, stateKey])
+  @@index([deviceId])
+}
+
+// ---------------------------------------------------------------------------
+// Target lists (ADMIN only)
+// ---------------------------------------------------------------------------
+
+model TargetList {
+  id                 String           @id @default(cuid())
+  name               String
+  status             TargetListStatus @default(UPLOADING)
+  uploadedByAdminId  String
+  originalFileName   String           @db.VarChar(255)
+  storageKey         String?          @db.VarChar(512)
+  byteSize           Int              @default(0)
+  sourceRowCount     Int              @default(0)
+  validCount         Int              @default(0)
+  invalidCount       Int              @default(0)
+  duplicateCount     Int              @default(0)
+  importedCount      Int              @default(0)
+  defaultCountryCode String           @db.VarChar(8)
+  errorSummary       String?          @db.Text
+  importStartedAt    DateTime?
+  importFinishedAt   DateTime?
+  archivedAt         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  uploadedBy  User                @relation("TargetListUploader", fields: [uploadedByAdminId], references: [id])
+  numbers     TargetNumber[]
+  invalidRows TargetInvalidRow[]
+  campaigns   Campaign[]
+
+  @@index([status, createdAt])
+  @@index([uploadedByAdminId])
+  @@index([archivedAt])
+}
+
+model TargetNumber {
+  id               BigInt   @id @default(autoincrement())
+  targetListId     String
+  normalizedNumber String   @db.VarChar(24)
+  countryCode      String?  @db.VarChar(8)
+  createdAt        DateTime @default(now())
+
+  targetList TargetList @relation(fields: [targetListId], references: [id], onDelete: Cascade)
+
+  @@unique([targetListId, normalizedNumber])
+  @@index([targetListId, id])
+}
+
+model TargetInvalidRow {
+  id           BigInt   @id @default(autoincrement())
+  targetListId String
+  rowNumber    Int
+  reason       String   @db.VarChar(64)
+  /// Truncated + masked sample of the offending value. Never a full number.
+  sample       String   @db.VarChar(64)
+  createdAt    DateTime @default(now())
+
+  targetList TargetList @relation(fields: [targetListId], references: [id], onDelete: Cascade)
+
+  @@index([targetListId, id])
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns (ADMIN only)
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id               String  @id @default(cuid())
+  name             String
+  /// Short, user-visible description. Safe to expose to USER.
+  description      String  @db.Text
+  /// Internal notes. ADMIN only, never serialised into USER responses.
+  internalNotes    String? @db.Text
+  createdByAdminId String
+
+  status     CampaignStatus @default(DRAFT)
+  archivedAt DateTime?
+
+  // --- Content -------------------------------------------------------------
+  messageText  String  @db.Text
+  mediaKey     String? @db.VarChar(512)
+  mediaMime    String? @db.VarChar(127)
+  mediaCaption String? @db.Text
+  ctaLabel     String? @db.VarChar(64)
+  ctaUrl       String? @db.VarChar(2048)
+  /// Monotonic content version. Snapshotted onto every blast job.
+  contentVersion Int    @default(1)
+
+  // --- Delivery policy -----------------------------------------------------
+  targetListId       String
+  deviceModePolicy   DeviceModePolicy @default(SINGLE_DEVICE)
+  /// JSON array of allowed speeds in seconds; validated against 1/3/6/10.
+  allowedSpeeds      Json
+  payoutPerSend      Decimal          @db.Decimal(18, 4)
+  currency           String           @db.VarChar(3)
+  quotaPerUser       Int
+  maxConcurrentJobs  Int              @default(1)
+  assignmentPolicy   AssignmentPolicy @default(ALL_ELIGIBLE)
+  allowUserPause     Boolean          @default(true)
+  requireTermsAccept Boolean          @default(false)
+  retryLimit         Int              @default(2)
+
+  // --- Schedule (UTC) ------------------------------------------------------
+  scheduledStartAt DateTime
+  scheduledEndAt   DateTime
+  activatedAt      DateTime?
+  completedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   User                 @relation("CampaignCreator", fields: [createdByAdminId], references: [id])
+  targetList  TargetList           @relation(fields: [targetListId], references: [id])
+  assignments CampaignAssignment[]
+  blastJobs   BlastJob[]
+  recipients  CampaignRecipient[]
+
+  @@index([status, scheduledStartAt, scheduledEndAt])
+  @@index([targetListId])
+  @@index([createdByAdminId])
+  @@index([archivedAt])
+}
+
+model CampaignAssignment {
+  id         String   @id @default(cuid())
+  campaignId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
+  @@index([userId])
+}
+
+
+// ---------------------------------------------------------------------------
+// Blast jobs (USER executes)
+// ---------------------------------------------------------------------------
+
+model BlastJob {
+  id         String         @id @default(cuid())
+  campaignId String
+  userId     String
+  deviceId   String
+  status     BlastJobStatus @default(PENDING)
+
+  /// Server-derived idempotency token; blocks duplicate submissions.
+  submissionKey String @db.VarChar(191)
+
+  // --- Snapshot of campaign policy at creation time ------------------------
+  snapshotContentVersion Int
+  snapshotMessageText    String           @db.Text
+  snapshotMediaKey       String?          @db.VarChar(512)
+  snapshotMediaMime      String?          @db.VarChar(127)
+  snapshotMediaCaption   String?          @db.Text
+  snapshotCtaLabel       String?          @db.VarChar(64)
+  snapshotCtaUrl         String?          @db.VarChar(2048)
+  snapshotPayoutPerSend  Decimal          @db.Decimal(18, 4)
+  snapshotCurrency       String           @db.VarChar(3)
+  snapshotDeviceMode     DeviceModePolicy
+  snapshotRetryLimit     Int
+  snapshotAllowUserPause Boolean
+  speedSeconds           Int
+  quotaTotal             Int
+
+  requestedStopAt DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  stoppedByRole   ActorRole?
+  stopReason      String?    @db.VarChar(255)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  campaign     Campaign              @relation(fields: [campaignId], references: [id])
+  user         User                  @relation(fields: [userId], references: [id])
+  device       Device                @relation(fields: [deviceId], references: [id])
+  recipients   CampaignRecipient[]
+  ledgerEntries LedgerEntry[]
+  deliveryLogs DeliveryLog[]
+  events       ReconciliationEvent[]
+
+  @@unique([userId, submissionKey])
+  @@index([campaignId, status])
+  @@index([userId, status])
+  @@index([deviceId, status])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Per-campaign recipient allocation + delivery state machine (RULES.md §12)
+// ---------------------------------------------------------------------------
+
+model CampaignRecipient {
+  id         BigInt  @id @default(autoincrement())
+  campaignId String
+  blastJobId String?
+
+  /// Canonical E.164 number without `+`. Unique per campaign.
+  normalizedNumber String @db.VarChar(24)
+  /// Stable non-reversible reference used in logs and USER-facing payloads.
+  recipientRef     String @db.VarChar(64)
+
+  status       RecipientStatus @default(PENDING)
+  attemptCount Int             @default(0)
+
+  workerId          String?   @db.VarChar(64)
+  lockedAt          DateTime?
+  leaseExpiresAt    DateTime?
+  lastAttemptAt     DateTime?
+  nextAttemptAt     DateTime?
+  sentAt            DateTime?
+  providerMessageId String?   @db.VarChar(191)
+  failureCategory   String?   @db.VarChar(64)
+  failureReason     String?   @db.VarChar(255)
+
+  /// Deterministic key reused verbatim by the earnings ledger entry.
+  idempotencyKey String @unique @db.VarChar(191)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  blastJob BlastJob? @relation(fields: [blastJobId], references: [id])
+
+  @@unique([campaignId, normalizedNumber])
+  @@index([campaignId, status])
+  @@index([blastJobId, status])
+  @@index([status, leaseExpiresAt])
+  @@index([status, nextAttemptAt])
+  @@index([campaignId, blastJobId, status])
+}
+
+/// Ambiguous send / crash-recovery events requiring manual admin reconciliation.
+/// Never auto-retried (RULES.md §12).
+model ReconciliationEvent {
+  id          BigInt    @id @default(autoincrement())
+  blastJobId  String
+  recipientId BigInt
+  reason      String    @db.VarChar(64)
+  detail      String?   @db.Text
+  resolvedAt  DateTime?
+  resolvedBy  String?   @db.VarChar(191)
+  createdAt   DateTime  @default(now())
+
+  blastJob BlastJob @relation(fields: [blastJobId], references: [id], onDelete: Cascade)
+
+  @@index([blastJobId, resolvedAt])
+  @@index([recipientId])
+}
+
+// ---------------------------------------------------------------------------
+// Immutable ledger (RULES.md §14)
+// ---------------------------------------------------------------------------
+
+/// Append-only. Rows are never updated or deleted; corrections are new rows.
+model LedgerEntry {
+  id     BigInt @id @default(autoincrement())
+  userId String
+
+  type   LedgerType
+  status LedgerStatus @default(SETTLED)
+
+  /// Signed amount: positive credits the user, negative debits the user.
+  amount   Decimal @db.Decimal(18, 4)
+  currency String  @db.VarChar(3)
+
+  sourceType String  @db.VarChar(32)
+  sourceId   String  @db.VarChar(191)
+  blastJobId String?
+
+  /// Globally unique. One confirmed recipient => exactly one earning row.
+  idempotencyKey String @unique @db.VarChar(191)
+
+  /// Minimal safe metadata only. Never target numbers or wallet details.
+  metadata Json?
+
+  /// Reason + actor are mandatory for admin adjustments.
+  reason       String? @db.VarChar(255)
+  actorUserId  String? @db.VarChar(191)
+
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  blastJob BlastJob? @relation(fields: [blastJobId], references: [id])
+
+  @@index([userId, status, createdAt])
+  @@index([userId, type])
+  @@index([sourceType, sourceId])
+  @@index([blastJobId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Wallet + withdrawal (RULES.md §15)
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  /// AES-256-GCM ciphertext. Decrypted server-side only, masked in every UI.
+  fullNameCiphertext      String @db.Text
+  accountNumberCiphertext String @db.Text
+  /// Last 4 digits, safe for display.
+  accountNumberLast4      String @db.VarChar(4)
+  providerCode            String @db.VarChar(32)
+  providerName            String @db.VarChar(64)
+
+  status    WalletStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  changeRequests WalletChangeRequest[]
+
+  @@index([status])
+}
+
+/// USER may set a wallet once; later edits go through admin review.
+model WalletChangeRequest {
+  id       String @id @default(cuid())
+  walletId String
+  userId   String
+
+  fullNameCiphertext      String @db.Text
+  accountNumberCiphertext String @db.Text
+  accountNumberLast4      String @db.VarChar(4)
+  providerCode            String @db.VarChar(32)
+  providerName            String @db.VarChar(64)
+
+  status        ChangeRequestStatus @default(PENDING)
+  reviewedByAdminId String?
+  reviewNote        String?         @db.VarChar(255)
+  reviewedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+model Withdrawal {
+  id     String           @id @default(cuid())
+  userId String
+  status WithdrawalStatus @default(PENDING)
+
+  amount   Decimal @db.Decimal(18, 4)
+  fee      Decimal @db.Decimal(18, 4)
+  netAmount Decimal @db.Decimal(18, 4)
+  currency String  @db.VarChar(3)
+
+  /// Wallet snapshot at request time; only masked data is stored here.
+  walletProviderCode  String @db.VarChar(32)
+  walletProviderName  String @db.VarChar(64)
+  walletAccountLast4  String @db.VarChar(4)
+
+  /// Deterministic key for the paired hold ledger entry.
+  holdIdempotencyKey    String  @unique @db.VarChar(191)
+  releaseIdempotencyKey String? @unique @db.VarChar(191)
+
+  reviewedByAdminId String?
+  adminNote         String?   @db.VarChar(255)
+  rejectionReason   String?   @db.VarChar(255)
+  processedAt       DateTime?
+  paidAt            DateTime?
+  payoutReference   String?   @db.VarChar(191)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Settings, logging and audit (RULES.md §16, §17)
+// ---------------------------------------------------------------------------
+
+model Setting {
+  key             String   @id @db.VarChar(96)
+  value           Json
+  updatedByUserId String?
+  updatedAt       DateTime @updatedAt
+
+  updatedBy User? @relation("SettingUpdater", fields: [updatedByUserId], references: [id])
+}
+
+/// Immutable admin audit trail.
+model AuditLog {
+  id           BigInt    @id @default(autoincrement())
+  actorUserId  String?
+  actorRole    ActorRole
+  action       String    @db.VarChar(64)
+  resourceType String    @db.VarChar(48)
+  resourceId   String?   @db.VarChar(191)
+  /// Sanitised before/after summaries. Never raw numbers or credentials.
+  beforeSummary Json?
+  afterSummary  Json?
+  reason        String?  @db.VarChar(255)
+  ipHash        String?  @db.VarChar(64)
+  createdAt     DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+model SecurityLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    String?
+  event     String   @db.VarChar(48)
+  outcome   String   @db.VarChar(16)
+  ipHash    String?  @db.VarChar(64)
+  userAgent String?  @db.VarChar(255)
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+}
+
+/// Delivery logs use only sanitised recipient references and are pruned by
+/// the retention cleanup worker.
+model DeliveryLog {
+  id          BigInt   @id @default(autoincrement())
+  blastJobId  String
+  recipientId BigInt
+  recipientRef String  @db.VarChar(64)
+  event       String   @db.VarChar(32)
+  status      String   @db.VarChar(32)
+  detail      String?  @db.VarChar(255)
+  workerId    String?  @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  blastJob BlastJob @relation(fields: [blastJobId], references: [id], onDelete: Cascade)
+
+  @@index([blastJobId, createdAt])
+  @@index([createdAt])
+  @@index([recipientId])
+}
+
+/// Operational log for worker/queue events surfaced in the admin ops view.
+model OperationalLog {
+  id        BigInt   @id @default(autoincrement())
+  scope     String   @db.VarChar(32)
+  level     String   @db.VarChar(16)
+  event     String   @db.VarChar(64)
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([scope, createdAt])
+  @@index([level, createdAt])
+}
+
