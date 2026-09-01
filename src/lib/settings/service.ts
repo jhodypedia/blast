@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db/prisma";
-import { redis } from "@/lib/redis/client";
+import { withRedis } from "@/lib/redis/client";
 import { logger } from "@/lib/observability/logger";
 import { validationError } from "@/lib/errors";
 import {
@@ -15,8 +15,9 @@ import {
  * Settings service.
  *
  * Values are cached in Redis for a short TTL to avoid a database round trip on
- * every request, and the cache is invalidated on write. Reads never throw on a
- * missing row: the registry default is returned instead.
+ * every request. The cache is strictly an optimisation: every read goes through
+ * `withRedis`, so when Redis is unreachable the database (and ultimately the
+ * registry default) answers instead of the request failing.
  */
 
 const CACHE_TTL_SECONDS = 60;
@@ -25,26 +26,33 @@ function cacheKey(key: SettingKey): string {
   return `setting:${key}`;
 }
 
+/** `JSON.parse` that reports failure instead of throwing. */
+function safeJsonParse(raw: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function getSetting<K extends SettingKey>(
   key: K,
 ): Promise<SettingValue<K>> {
-  const log = logger("settings");
+  const cached = await withRedis(
+    (client) => client.get(cacheKey(key)),
+    null as string | null,
+  );
 
-  try {
-    const cached = await redis().get(cacheKey(key));
-    if (cached !== null) {
-      const parsed = settingSchemas[key].safeParse(JSON.parse(cached));
+  if (cached !== null) {
+    // A corrupt entry must not break the request; fall through to the database.
+    const decoded = safeJsonParse(cached);
+    if (decoded.ok) {
+      const parsed = settingSchemas[key].safeParse(decoded.value);
       if (parsed.success) {
         return parsed.data as SettingValue<K>;
       }
-      // Corrupt cache entry: drop it and fall through to the database.
-      await redis().del(cacheKey(key));
     }
-  } catch (error) {
-    log.warn(
-      { event: "settings.cache_read_failed", key, reason: String(error) },
-      "Falling back to database for setting",
-    );
+    await withRedis((client) => client.del(cacheKey(key)), 0);
   }
 
   const row = await prisma.setting.findUnique({
@@ -58,7 +66,7 @@ export async function getSetting<K extends SettingKey>(
 
   const parsed = settingSchemas[key].safeParse(row.value);
   if (!parsed.success) {
-    log.error(
+    logger("settings").error(
       { event: "settings.invalid_stored_value", key },
       "Stored setting failed validation; using default",
     );
@@ -67,11 +75,11 @@ export async function getSetting<K extends SettingKey>(
 
   const value = parsed.data as SettingValue<K>;
 
-  try {
-    await redis().set(cacheKey(key), JSON.stringify(value), "EX", CACHE_TTL_SECONDS);
-  } catch {
-    // Cache write failures are non-fatal.
-  }
+  await withRedis(
+    (client) =>
+      client.set(cacheKey(key), JSON.stringify(value), "EX", CACHE_TTL_SECONDS),
+    null,
+  );
 
   return value;
 }
@@ -108,11 +116,8 @@ export async function setSetting<K extends SettingKey>(
     },
   });
 
-  try {
-    await redis().del(cacheKey(key));
-  } catch {
-    // Non-fatal: the TTL will expire the stale entry.
-  }
+  // Non-fatal if Redis is down: the TTL expires the stale entry anyway.
+  await withRedis((client) => client.del(cacheKey(key)), 0);
 
   return { previous, next };
 }

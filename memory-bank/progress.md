@@ -12,16 +12,18 @@ next. Read this together with `RULES.md` and `AGENTS.md` before starting work.
 The application is feature-complete for the ADMIN and USER surfaces described in
 `RULES.md`, and passes lint, typecheck, unit tests and a production build. It has
 **not** been run against a live MySQL/MariaDB or Redis instance, so all database,
-queue and WhatsApp paths are verified by types and build only.
+queue and WhatsApp paths are verified by types and build only. Redis absence is
+now handled deliberately rather than crashing the build (see Key Decisions), but
+Redis-dependent behaviour is still unexercised.
 
 ### Verification (last full run)
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Lint | `npx eslint src prisma tests --max-warnings=0` | exit 0 |
+| Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npx tsc --noEmit` | exit 0 |
-| Unit tests | `npx vitest run` | exit 0 — 126 tests, 11 files |
-| Build | `npx next build` | exit 0 — 22 routes |
+| Unit tests | `npx vitest run` | exit 0 — 133 tests, 12 files |
+| Build | `npx next build` | exit 0 — 22 routes, no `[ioredis] Unhandled error event` |
 
 ## Architecture
 
@@ -52,6 +54,25 @@ Read-only page data comes from dedicated `queries.ts` modules
 
 ## Key Decisions
 
+- **Redis is treated as optional infrastructure.** `lib/redis/client.ts` attaches
+  an `error` listener to every connection (an unhandled ioredis `error` event can
+  kill the process), uses `lazyConnect: true` so importing a module never opens a
+  socket, and caps reconnection with `connectTimeout: 5s` +
+  `retryStrategy: min(attempt * 200ms, 5s)`. A circuit breaker
+  (`lib/redis/circuit.ts`, 3 consecutive failures → open for 10s, then one probe)
+  stops callers from paying the connect timeout on every request while Redis is
+  down.
+  - Cache-like callers use `withRedis(op, fallback)` and degrade silently:
+    `lib/settings/service.ts` falls back to the database then the registry
+    default, and `/api/health` reports `redis: false` / `degraded` instead of
+    throwing.
+  - `lib/security/rate-limit.ts` deliberately **fails closed**: when the breaker
+    is open or the pipeline throws, `consumeRateLimit` denies the request, so
+    taking Redis down cannot disable rate limiting. Only `resetRateLimit` and the
+    window-TTL repair are best-effort.
+  - Queue connections are separate (`createQueueConnection`) and keep
+    `maxRetriesPerRequest: null` (required by BullMQ) and eager connect; they do
+    not use the breaker, because a dropped enqueue must fail loudly.
 - **Withdrawal state machine** lives in `lib/withdrawal/transitions.ts` with no
   DB imports, so it is unit-testable and reusable by the admin UI. The service
   imports it rather than duplicating the rules.
@@ -116,14 +137,25 @@ never mutated or deleted.
    and skips only outside production, so a misconfigured production deploy fails
    closed rather than losing protection. The real widget has not been exercised
    end to end.
+6. **No Redis available on this machine.** Probed and confirmed absent: no
+   `docker`, no `redis-server`, no `memurai`; `wsl` is present but has no
+   installed distribution. The graceful-degradation work above means the app
+   builds and runs without Redis, but nothing that actually needs Redis (rate
+   limiting, queues, workers, pairing challenges) has been exercised. Rate
+   limiting fails closed, so login/registration/withdrawal will be **rejected**
+   until a real Redis is reachable — this is not a usable dev setup, only a safe
+   one. A decision on how to provide Redis (Memurai, a WSL distro, Docker
+   Desktop, or a remote `REDIS_URL`) is still outstanding.
 
 ## Next Task
 
-Bring up MySQL/MariaDB and Redis, then in order:
+Provide a reachable Redis, then bring up MySQL/MariaDB, then in order:
 
-1. `npm run prisma:deploy` and `npm run db:seed`; fix any migration or seed error.
-2. Add `*.integration.test.ts` covering: parallel `claimRecipients` calls never
+1. Point `REDIS_URL` at the chosen instance and confirm `/api/health` with the
+   `HEALTH_CHECK_TOKEN` bearer token reports `redis: true`.
+2. `npm run prisma:deploy` and `npm run db:seed`; fix any migration or seed error.
+3. Add `*.integration.test.ts` covering: parallel `claimRecipients` calls never
    returning the same row, expired-lease recovery, and a single earning per
    `SENT` recipient.
-3. Exercise `npm run worker` against a real device for one small campaign.
-4. Re-run `npm run verify`.
+4. Exercise `npm run worker` against a real device for one small campaign.
+5. Re-run `npm run verify`.

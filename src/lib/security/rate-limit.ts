@@ -1,7 +1,8 @@
 import "server-only";
 
-import { redis } from "@/lib/redis/client";
+import { redis, redisAvailable, withRedis } from "@/lib/redis/client";
 import { rateLimited } from "@/lib/errors";
+import { logger } from "@/lib/observability/logger";
 
 /**
  * Redis-backed fixed-window rate limiting for login, registration, password
@@ -43,29 +44,63 @@ export type RateLimitResult = {
 /**
  * Consumes one unit from the window for `identifier` under `rule`.
  * `identifier` must be a server-derived value (user id or hashed IP).
+ *
+ * This is a security control, so it fails **closed**: if Redis is unreachable
+ * the request is denied rather than silently allowed. That is deliberate — the
+ * alternative would let an attacker disable rate limiting by taking Redis down.
  */
 export async function consumeRateLimit(
   rule: RateLimitRule,
   identifier: string,
 ): Promise<RateLimitResult> {
+  const denied: RateLimitResult = {
+    allowed: false,
+    remaining: 0,
+    retryAfterSeconds: rule.windowSeconds,
+  };
+
+  // Breaker already open: skip the connect timeout and deny immediately.
+  if (!redisAvailable()) {
+    logger("security").error(
+      { event: "ratelimit.unavailable", rule: rule.name },
+      "Rate limiting unavailable; denying request",
+    );
+    return denied;
+  }
+
   const key = `rl:${rule.name}:${identifier}`;
   const client = redis();
 
-  const pipeline = client.multi();
-  pipeline.incr(key);
-  pipeline.ttl(key);
-  const results = await pipeline.exec();
+  let results: [error: Error | null, result: unknown][] | null;
+  try {
+    const pipeline = client.multi();
+    pipeline.incr(key);
+    pipeline.ttl(key);
+    results = await pipeline.exec();
+  } catch (error) {
+    logger("security").error(
+      {
+        event: "ratelimit.failed",
+        rule: rule.name,
+        reason: error instanceof Error ? error.message : "unknown",
+      },
+      "Rate limit check failed; denying request",
+    );
+    return denied;
+  }
 
   if (!results) {
-    // Fail closed: if Redis is unavailable we do not silently drop protection.
-    return { allowed: false, remaining: 0, retryAfterSeconds: rule.windowSeconds };
+    return denied;
   }
 
   const count = Number(results[0]?.[1] ?? 0);
   let ttl = Number(results[1]?.[1] ?? -1);
 
   if (ttl < 0) {
-    await client.expire(key, rule.windowSeconds);
+    // First hit of the window; the TTL is only ever set here so a burst cannot
+    // extend its own window. Best-effort: a failure leaves the key without a
+    // TTL, which the next call repairs.
+    await withRedis((c) => c.expire(key, rule.windowSeconds), 0);
     ttl = rule.windowSeconds;
   }
 
@@ -89,10 +124,13 @@ export async function enforceRateLimit(
   }
 }
 
-/** Clears a window, e.g. after a successful login. */
+/**
+ * Clears a window, e.g. after a successful login. Best-effort: failure only
+ * means the caller keeps its existing (stricter) counter until the TTL expires.
+ */
 export async function resetRateLimit(
   rule: RateLimitRule,
   identifier: string,
 ): Promise<void> {
-  await redis().del(`rl:${rule.name}:${identifier}`);
+  await withRedis((client) => client.del(`rl:${rule.name}:${identifier}`), 0);
 }

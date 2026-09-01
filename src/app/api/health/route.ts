@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db/prisma";
-import { redis } from "@/lib/redis/client";
+import { withRedis } from "@/lib/redis/client";
 import { serverEnv } from "@/lib/env";
 import { safeEqual } from "@/lib/security/crypto";
 
@@ -24,12 +24,10 @@ async function checkDatabase(): Promise<boolean> {
 }
 
 async function checkRedis(): Promise<boolean> {
-  try {
-    const reply = await redis().ping();
-    return reply === "PONG";
-  } catch {
-    return false;
-  }
+  // `withRedis` returns the fallback when the breaker is open or the ping
+  // fails, so an unreachable Redis reports `degraded` instead of throwing.
+  const reply = await withRedis((client) => client.ping(), null as string | null);
+  return reply === "PONG";
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
