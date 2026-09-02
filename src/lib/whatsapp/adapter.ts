@@ -55,9 +55,13 @@ async function connect(params: {
   const log = logger("device");
   const { deviceId } = params;
 
-  if (sockets.has(deviceId)) {
-    // Already connecting/connected in this process.
+  const existing = sockets.get(deviceId);
+  if (existing?.state === "CONNECTED") {
     return;
+  }
+  if (existing) {
+    // Replace a stale handshake so a new pairing request gets fresh callbacks.
+    await disconnect(deviceId);
   }
 
   const auth = await loadAuthState(deviceId);
@@ -227,11 +231,12 @@ async function send(
   let writeAttempted = false;
 
   try {
-    const content = message.cta
+    const cta = message.cta;
+    const content = cta
       ? await (async () => {
-          const button = new Button(socket)
+          const button = new Button(handle.socket)
             .setBody(message.media?.caption ?? message.text)
-            .addUrl(message.cta.label, message.cta.url);
+            .addUrl(cta.label, cta.url);
           if (message.media) {
             button.setImage(await readFile(message.media.storagePath));
           }

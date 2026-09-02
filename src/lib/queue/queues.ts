@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { Queue, type JobsOptions } from "bullmq";
 
 import { QUEUE_NAMES, type QueueName } from "@/lib/constants";
@@ -125,11 +127,13 @@ export async function enqueueBlastDelivery(
 
 export async function enqueueDeviceSession(
   data: DeviceSessionJobData,
+  options?: { delay?: number },
 ): Promise<void> {
   await enqueue(QUEUE_NAMES.deviceSession, data, {
-    // Re-requesting a pairing must be able to supersede a stale attempt, so the
-    // job id includes the action but not the pairing payload.
-    jobId: `device-${data.deviceId}-${data.action}`,
+    // Each pairing attempt must be a new BullMQ job; the service owns duplicate
+    // protection through its per-device pairing lock.
+    jobId: `device-${data.deviceId}-${data.action}-${randomUUID()}`,
+    ...(options?.delay ? { delay: options.delay } : {}),
     attempts: 1,
   });
 }

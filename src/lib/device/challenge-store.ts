@@ -4,9 +4,25 @@ import { redis } from "@/lib/redis/client";
 import type { PairingChallenge } from "@/lib/whatsapp/types";
 
 const CHALLENGE_TTL_SECONDS = 180;
+const PAIRING_LOCK_PREFIX = "device:pairing-lock:";
 
 function challengeKey(deviceId: string): string {
   return `device:challenge:${deviceId}`;
+}
+
+export async function claimPairing(deviceId: string, ttlSeconds: number): Promise<boolean> {
+  const result = await redis().set(
+    `${PAIRING_LOCK_PREFIX}${deviceId}`,
+    "1",
+    "EX",
+    ttlSeconds,
+    "NX",
+  );
+  return result === "OK";
+}
+
+export async function releasePairing(deviceId: string): Promise<void> {
+  await redis().del(`${PAIRING_LOCK_PREFIX}${deviceId}`);
 }
 
 export async function storeDeviceChallenge(
@@ -27,7 +43,13 @@ export async function readDeviceChallenge(
   const raw = await redis().get(challengeKey(deviceId));
   if (!raw) return null;
 
-  const parsed = JSON.parse(raw) as PairingChallenge & { expiresAt: string };
+  let parsed: PairingChallenge & { expiresAt: string };
+  try {
+    parsed = JSON.parse(raw) as PairingChallenge & { expiresAt: string };
+  } catch {
+    await clearDeviceChallenge(deviceId);
+    return null;
+  }
   if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
     await clearDeviceChallenge(deviceId);
     return null;

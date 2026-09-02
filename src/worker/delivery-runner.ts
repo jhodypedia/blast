@@ -60,6 +60,8 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       snapshotMediaKey: true,
       snapshotMediaMime: true,
       snapshotMediaCaption: true,
+      snapshotCtaLabel: true,
+      snapshotCtaUrl: true,
       user: { select: { id: true, status: true, deletedAt: true } },
       device: { select: { id: true, status: true, deletedAt: true } },
       campaign: {

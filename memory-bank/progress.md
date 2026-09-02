@@ -405,6 +405,50 @@ never mutated or deleted.
   lint/typecheck/build were run after the update. A real WhatsApp device flow
   still requires the worker, Redis, and a physical account session.
 
+## Pairing Visibility and Worker Stability Update (2026-09-03)
+
+- Fixed stale BullMQ pairing jobs: every device-session attempt now gets a
+  unique compatible job ID, while a Redis per-device lock prevents duplicate
+  active pairing requests.
+- Replaced stale in-process WhatsApp handshakes before starting a fresh one, so
+  regenerated QR/pairing requests receive current callbacks and challenges.
+- Worker/provider startup failures now move the device from CONNECTING to ERROR,
+  clear the challenge, and release the pairing lock instead of leaving the UI at
+  “waiting for worker”. Terminal states also clear stale Redis challenges.
+- The frontend renders the real QR payload locally and retries by submitting a
+  new pairing action. It aborts overlapping status polls.
+- Strict typecheck and editor diagnostics pass after the final changes. Real
+  QR/pairing verification still requires Redis, the worker process, and a real
+  WhatsApp account.
+
+## Pairing Compile Fix (2026-09-03)
+
+- Fixed QR challenge union narrowing in the frontend by separating QR and
+  pairing-code challenge variables before rendering.
+- Fixed the CTA builder to use the active socket handle and narrowed the CTA
+  value before accessing its fields.
+- Added CTA snapshot fields to the worker delivery query so campaign buttons
+  type-check and survive into delivery.
+- Editor diagnostics are clean for all affected files. A terminal typecheck
+  invocation was blocked by the local PowerShell/npm resolution issue.
+
+## Auto-Reconnect Update (2026-09-03)
+
+- Added bounded worker-side auto-reconnect for already authenticated WhatsApp
+  sessions after unexpected disconnects. Backoff is 5s, 15s, 30s, 60s, and
+  120s, capped at five attempts.
+- Reconnect jobs use auth state only and do not create a new QR or pairing-code
+  challenge. Pairing attempts, logout/expired sessions, and manual disconnects
+  do not auto-reconnect.
+- Reconnect scheduling is atomic on the `DISCONNECTED` state and the attempt
+  counter resets when the device reaches `CONNECTED`.
+- Device session jobs now use unique BullMQ IDs, while pairing locks still stop
+  duplicate active pairing requests.
+- Editor diagnostics are clean and lint/full unit test commands were run. The
+  terminal's typecheck invocation was intermittently blocked by PowerShell
+  `npm.cmd` resolution, so a real device reconnect still needs worker, Redis,
+  and WhatsApp session verification.
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`

@@ -22,6 +22,10 @@ export const MAX_DEVICES_PER_USER_LIMIT = 20;
 export const RECIPIENT_LEASE_MS = 60_000;
 export const RECIPIENT_HEARTBEAT_MS = 20_000;
 
+/** Bounded reconnect policy for registered WhatsApp sessions. */
+export const MAX_DEVICE_RECONNECT_ATTEMPTS = 5;
+export const DEVICE_RECONNECT_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000, 120_000] as const;
+
 /** How long a `SENDING` row may stay untouched before reconciliation. */
 export const SENDING_STALE_MS = 5 * 60_000;
 

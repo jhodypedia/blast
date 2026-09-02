@@ -113,12 +113,14 @@ export function DevicePairingModal({
   }, [pairState, refreshStatus]);
 
   useEffect(() => {
-    if (!open || payload?.challenge?.method !== "QR") {
+    const qrChallenge =
+      payload?.challenge?.method === "QR" ? payload.challenge : null;
+    if (!open || !qrChallenge) {
       setQrDataUrl(null);
       return;
     }
     let cancelled = false;
-    void QRCode.toDataURL(payload.challenge.qr, {
+    void QRCode.toDataURL(qrChallenge.qr, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 240,
@@ -128,13 +130,15 @@ export function DevicePairingModal({
       if (!cancelled) setQrDataUrl(null);
     });
     return () => { cancelled = true; };
-  }, [open, payload?.challenge?.method, payload?.challenge?.qr]);
+  }, [open, payload?.challenge]);
 
   if (!open) return null;
 
   const connected = payload?.device.status === "CONNECTED";
   const connectionError = payload?.device.status === "ERROR";
   const challenge = payload?.challenge;
+  const qrChallenge = challenge?.method === "QR" ? challenge : null;
+  const pairCodeChallenge = challenge?.method === "PAIR_CODE" ? challenge : null;
   const methods: ("QR" | "PAIR_CODE")[] =
     pairCodeEnabled === false ? ["QR"] : ["QR", "PAIR_CODE"];
   const expired = challenge
@@ -241,10 +245,10 @@ export function DevicePairingModal({
             </div>
           ) : loadingStatus && !payload ? (
             <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-5 animate-spin" /> Mengambil status...</div>
-          ) : challenge?.method === "QR" && !expired ? (
+          ) : qrChallenge && !expired ? (
             <div className="flex flex-col items-center gap-2">{qrDataUrl ? <img src={qrDataUrl} alt="QR Code WhatsApp" width={240} height={240} className="rounded-lg bg-white p-2" /> : <Loader2 className="my-20 size-6 animate-spin text-primary" />}<span className="text-xs text-muted-foreground">Pindai QR Code ini dari WhatsApp.</span></div>
-          ) : challenge?.method === "PAIR_CODE" && !expired ? (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="font-mono text-2xl tracking-[0.2em] text-primary">{challenge.pairCode}</strong><Button type="button" variant="ghost" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(challenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div></div>
+          ) : pairCodeChallenge && !expired ? (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="font-mono text-2xl tracking-[0.2em] text-primary">{pairCodeChallenge.pairCode}</strong><Button type="button" variant="ghost" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(pairCodeChallenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div></div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
               <p>{connectionError || pairState.status === "error" ? "Koneksi gagal dimulai." : "Menunggu koneksi dari worker..."}</p>

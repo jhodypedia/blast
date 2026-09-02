@@ -1,11 +1,19 @@
 import "server-only";
 
 import { prisma } from "@/lib/db/prisma";
+import {
+  DEVICE_RECONNECT_BACKOFF_MS,
+  MAX_DEVICE_RECONNECT_ATTEMPTS,
+} from "@/lib/constants";
 import { logger } from "@/lib/observability/logger";
 import { whatsappAdapter } from "@/lib/whatsapp/adapter";
-import type { DeviceSessionJobData } from "@/lib/queue/queues";
+import {
+  enqueueDeviceSession,
+  type DeviceSessionJobData,
+} from "@/lib/queue/queues";
 import {
   clearDeviceChallenge,
+  releasePairing,
   storeDeviceChallenge,
 } from "@/lib/device/challenge-store";
 
@@ -38,6 +46,8 @@ export async function processDeviceSession(
   // A suspended owner may never hold a live session.
   if (device.user.status !== "ACTIVE" || device.user.deletedAt) {
     await whatsappAdapter.disconnect(device.id);
+    await clearDeviceChallenge(device.id);
+    await releasePairing(device.id);
     await prisma.device.update({
       where: { id: device.id },
       data: { status: "DISCONNECTED" },
@@ -47,6 +57,8 @@ export async function processDeviceSession(
 
   if (data.action === "DISCONNECT") {
     await whatsappAdapter.disconnect(device.id);
+    await clearDeviceChallenge(device.id);
+    await releasePairing(device.id);
     await prisma.device.update({
       where: { id: device.id },
       data: { status: "DISCONNECTED" },
@@ -58,40 +70,75 @@ export async function processDeviceSession(
     await whatsappAdapter.disconnect(device.id);
   }
 
-  await whatsappAdapter.connect({
-    deviceId: device.id,
-    pairing: data.pairing ?? { method: "QR" },
-    onChallenge: async (challenge) => {
-      await storeDeviceChallenge(device.id, challenge);
-    },
-    onUpdate: async (update) => {
-      await prisma.device.update({
-        where: { id: device.id },
-        data: {
-          status: update.state,
-          ...(update.normalizedNumber
-            ? { phoneNumber: update.normalizedNumber }
-            : {}),
-          ...(update.state === "CONNECTED"
-            ? { lastConnectedAt: new Date(), reconnectAttempts: 0 }
-            : {}),
-          lastSeenAt: new Date(),
-          lastErrorCode: update.errorCode ?? null,
-        },
-      });
+  try {
+    await whatsappAdapter.connect({
+      deviceId: device.id,
+      ...(data.pairing ? { pairing: data.pairing } : {}),
+      onChallenge: async (challenge) => {
+        await storeDeviceChallenge(device.id, challenge);
+      },
+      onUpdate: async (update) => {
+        await prisma.device.update({
+          where: { id: device.id },
+          data: {
+            status: update.state,
+            ...(update.normalizedNumber
+              ? { phoneNumber: update.normalizedNumber }
+              : {}),
+            ...(update.state === "CONNECTED"
+              ? { lastConnectedAt: new Date(), reconnectAttempts: 0 }
+              : {}),
+            lastSeenAt: new Date(),
+            lastErrorCode: update.errorCode ?? null,
+          },
+        });
 
-      if (update.requiresReauth) {
-        await clearDeviceChallenge(device.id);
-      }
+        if (["CONNECTED", "ERROR", "EXPIRED", "DISCONNECTED"].includes(update.state)) {
+          await clearDeviceChallenge(device.id);
+          await releasePairing(device.id);
+        }
 
-      log.info(
-        {
-          event: "device.state_changed",
-          deviceId: device.id,
-          state: update.state,
-        },
-        "Device connection state updated",
-      );
-    },
-  });
+        if (
+          update.state === "DISCONNECTED" &&
+          !update.requiresReauth &&
+          !data.pairing
+        ) {
+          const changed = await prisma.device.updateMany({
+            where: { id: device.id, status: "DISCONNECTED" },
+            data: { reconnectAttempts: { increment: 1 } },
+          });
+          if (changed.count === 1) {
+            const attempt = await prisma.device.findUnique({
+              where: { id: device.id },
+              select: { reconnectAttempts: true },
+            });
+            if (attempt && attempt.reconnectAttempts <= MAX_DEVICE_RECONNECT_ATTEMPTS) {
+              const delay = DEVICE_RECONNECT_BACKOFF_MS[attempt.reconnectAttempts - 1] ?? DEVICE_RECONNECT_BACKOFF_MS[DEVICE_RECONNECT_BACKOFF_MS.length - 1];
+              await enqueueDeviceSession(
+                { deviceId: device.id, action: "CONNECT" },
+                { delay },
+              );
+            }
+          }
+        }
+
+        log.info(
+          {
+            event: "device.state_changed",
+            deviceId: device.id,
+            state: update.state,
+          },
+          "Device connection state updated",
+        );
+      },
+    });
+  } catch (error) {
+    await clearDeviceChallenge(device.id);
+    await releasePairing(device.id);
+    await prisma.device.updateMany({
+      where: { id: device.id, status: "CONNECTING" },
+      data: { status: "ERROR", lastErrorCode: "SESSION_CONNECT_FAILED" },
+    });
+    throw error;
+  }
 }

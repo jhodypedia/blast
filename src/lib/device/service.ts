@@ -16,8 +16,9 @@ import type { DeviceSessionJobData } from "@/lib/queue/queues";
 import { recordAudit } from "@/lib/audit/service";
 import { logger } from "@/lib/observability/logger";
 import {
+  claimPairing,
   clearDeviceChallenge,
-  readDeviceChallenge,
+  releasePairing,
 } from "@/lib/device/challenge-store";
 
 /**
@@ -140,7 +141,8 @@ export async function requestPairing(params: {
   if (device.status === "CONNECTED") {
     throw invalidState("This device is already connected.");
   }
-  if (device.status === "CONNECTING" && (await readDeviceChallenge(device.id))) {
+  const pairingTtl = params.method === "QR" ? 70 : 190;
+  if (!(await claimPairing(device.id, pairingTtl))) {
     throw invalidState("Koneksi perangkat sedang diproses. Tunggu hingga kode kedaluwarsa.");
   }
 
@@ -190,6 +192,7 @@ export async function requestPairing(params: {
       pairing,
     });
   } catch (error) {
+    await releasePairing(device.id);
     await prisma.device.updateMany({
       where: { id: device.id, status: "CONNECTING" },
       data: { status: "ERROR", lastErrorCode: "PAIRING_QUEUE_FAILED" },
