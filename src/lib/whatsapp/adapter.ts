@@ -67,7 +67,7 @@ async function connect(params: {
     auth: auth.state,
     // Pair-code flows must not also print a QR.
     printQRInTerminal: false,
-    browser: ["WA Blast Platform", "Chrome", "1.0.0"],
+    browser: ["PBlast", "Chrome", "1.0.0"],
     syncFullHistory: false,
     markOnlineOnConnect: false,
     logger: log as never,
