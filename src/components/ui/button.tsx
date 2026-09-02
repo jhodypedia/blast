@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Slot } from "@radix-ui/react-slot";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 
@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
  * Sizes keep interactive controls at or above the 44x44px touch target on
  * mobile (RULES.md §18). `loading` renders a spinner and disables interaction so
  * async actions always have a visible pending state.
+ *
+ * The spinner is a sibling of `children`, so `asChild` must mark the slot target
+ * with `Slottable`; otherwise Radix `Slot` sees more than one child and throws.
  */
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-[transform,box-shadow,background-color,color] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -62,6 +65,9 @@ function Button({
   ...props
 }: ButtonProps) {
   const Component = asChild ? Slot : "button";
+  // Radix `Slot` accepts a single child unless one is marked `Slottable`. The
+  // spinner is rendered as a sibling, so the real child has to be marked.
+  const content = asChild ? <Slottable>{children}</Slottable> : children;
 
   return (
     <Component
@@ -77,7 +83,7 @@ function Button({
           <span className="sr-only">Loading</span>
         </>
       ) : null}
-      {children}
+      {content}
     </Component>
   );
 }

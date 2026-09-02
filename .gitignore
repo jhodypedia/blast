@@ -57,4 +57,10 @@ next-env.d.ts
 
 # Local verification scratch files
 _*.bat
+_*.ps1
 _*.txt
+_*.err
+_*.out
+
+# Portable dev tooling (MariaDB/Redis binaries + data dirs, provisioned locally)
+/.tools/

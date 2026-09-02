@@ -5,7 +5,7 @@ import { Worker, type Job } from "bullmq";
 import { QUEUE_NAMES } from "@/lib/constants";
 import { serverEnv } from "@/lib/env";
 import { logger } from "@/lib/observability/logger";
-import { createQueueConnection } from "@/lib/redis/client";
+import { createQueueConnection, checkRedisReachable } from "@/lib/redis/client";
 import { getQueue } from "@/lib/queue/queues";
 import type {
   BlastDeliveryJobData,
@@ -141,6 +141,18 @@ async function scheduleMaintenance(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Preflight before any BullMQ connection exists. BullMQ reconnects forever and
+  // re-emits the failure on every queue, so starting workers against a dead
+  // Redis floods the log instead of telling the operator what is wrong.
+  const reachable = await checkRedisReachable();
+  if (!reachable.ok) {
+    log.error(
+      { event: "worker.redis_unreachable", reason: reachable.reason },
+      "Cannot reach Redis; the worker cannot run without it. Start Redis (or fix REDIS_URL) and retry.",
+    );
+    process.exit(1);
+  }
+
   const workers = startWorkers();
   await scheduleMaintenance();
 

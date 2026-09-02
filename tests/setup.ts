@@ -5,6 +5,10 @@
  * server modules validate at import time. Nothing here touches a real database,
  * Redis instance, or WhatsApp session.
  */
+// `export {}` makes this a module: without it the file is a global script and
+// its top-level `env` collides with the one in `tests/integration/setup.ts`.
+export {};
+
 const env = process.env as Record<string, string | undefined>;
 
 env.NODE_ENV ??= "test";

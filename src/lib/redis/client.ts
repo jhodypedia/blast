@@ -5,6 +5,7 @@ import Redis, { type Redis as RedisClient } from "ioredis";
 import { serverEnv } from "@/lib/env";
 import { logger } from "@/lib/observability/logger";
 import { createCircuitBreaker } from "@/lib/redis/circuit";
+import { reconnectDelay, MAX_RECONNECT_DELAY_MS } from "@/lib/redis/reconnect";
 
 /**
  * Shared Redis connections.
@@ -13,7 +14,7 @@ import { createCircuitBreaker } from "@/lib/redis/circuit";
  * queue/worker connections are created separately from the general-purpose
  * client used for rate limiting and caching.
  *
- * Two things this module guarantees:
+ * Three things this module guarantees:
  *
  * 1. Every connection has an `error` listener. Without one, ioredis re-emits
  *    connection failures as `[ioredis] Unhandled error event`, which on some
@@ -21,6 +22,8 @@ import { createCircuitBreaker } from "@/lib/redis/circuit";
  * 2. Callers that can degrade gracefully go through {@link withRedis}, which
  *    short-circuits through a breaker while Redis is down instead of paying the
  *    connect timeout on every single request.
+ * 3. The general-purpose client stops reconnecting after a bounded number of
+ *    attempts, so an unreachable Redis cannot produce an unbounded log flood.
  */
 
 const globalForRedis = globalThis as unknown as {
@@ -53,7 +56,10 @@ function attachDiagnostics(client: RedisClient, label: string): RedisClient {
   });
 
   client.on("end", () => {
-    log.warn({ event: "redis.closed", connection: label }, "Redis connection closed");
+    log.warn(
+      { event: "redis.closed", connection: label },
+      "Redis connection closed",
+    );
   });
 
   return client;
@@ -71,8 +77,7 @@ function createRedis(
     enableReadyCheck: true,
     maxRetriesPerRequest: 3,
     connectTimeout: 5_000,
-    // Capped backoff; `null` would stop reconnecting permanently.
-    retryStrategy: (attempt: number) => Math.min(attempt * 200, 5_000),
+    retryStrategy: (attempt: number) => reconnectDelay(attempt),
     ...overrides,
   });
 
@@ -81,9 +86,18 @@ function createRedis(
 
 /** General-purpose client: rate limits, short-lived locks, cached settings. */
 export function redis(): RedisClient {
-  if (!globalForRedis.wablastRedis) {
-    globalForRedis.wablastRedis = createRedis("general");
+  const existing = globalForRedis.wablastRedis;
+
+  // `end` means the bounded reconnect policy gave up; every further command on
+  // that instance rejects with "Connection is closed", so replace it. Callers
+  // reach this path through the breaker, so a dead Redis is still only retried
+  // once per open window.
+  if (existing && existing.status !== "end") {
+    return existing;
   }
+
+  existing?.removeAllListeners();
+  globalForRedis.wablastRedis = createRedis("general");
   return globalForRedis.wablastRedis;
 }
 
@@ -93,19 +107,70 @@ export function redis(): RedisClient {
  *
  * `maxRetriesPerRequest: null` is mandatory for BullMQ's blocking commands, and
  * queue connections deliberately do not use the breaker: a queue write that
- * cannot reach Redis must fail loudly rather than be silently dropped.
+ * cannot reach Redis must fail loudly rather than be silently dropped. They also
+ * keep reconnecting indefinitely, because a worker is expected to wait for Redis
+ * to come back rather than give up.
  */
 export function createQueueConnection(): RedisClient {
   return createRedis("queue", {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    lazyConnect: false,
+    retryStrategy: (attempt: number) =>
+      Math.min(attempt * 200, MAX_RECONNECT_DELAY_MS),
   });
 }
 
-/** True while the breaker is open, i.e. Redis is known to be unreachable. */
+/** True while the breaker allows calls, i.e. Redis is not known to be down. */
 export function redisAvailable(): boolean {
   return breaker.allows();
+}
+
+/**
+ * One-shot connectivity probe on a throwaway connection.
+ *
+ * Used as a startup preflight. Queue connections retry forever and re-emit each
+ * failure per queue, so a worker started against an unreachable Redis produces
+ * an unreadable error storm instead of one actionable message.
+ */
+export async function checkRedisReachable(): Promise<
+  { ok: true } | { ok: false; reason: string }
+> {
+  const env = serverEnv();
+
+  const probe = new Redis(env.REDIS_URL, {
+    lazyConnect: true,
+    enableReadyCheck: true,
+    maxRetriesPerRequest: 1,
+    connectTimeout: 3_000,
+    // No reconnection: one attempt, then report.
+    retryStrategy: () => null,
+  });
+
+  // With retries disabled ioredis rejects `connect()` with "Connection is
+  // closed", which hides the real cause, so keep the first socket error.
+  let socketError: string | null = null;
+  probe.on("error", (error: Error) => {
+    socketError ??= error.message;
+  });
+
+  try {
+    await probe.connect();
+    const reply = await probe.ping();
+    if (reply !== "PONG") {
+      return { ok: false, reason: `unexpected PING reply: ${reply}` };
+    }
+    breaker.recordSuccess();
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        socketError ??
+        (error instanceof Error ? error.message : "unknown error"),
+    };
+  } finally {
+    probe.disconnect();
+  }
 }
 
 /**

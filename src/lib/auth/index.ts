@@ -85,6 +85,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    // `authorized` and `session` come from the shared edge-safe config so the
+    // middleware instance and this one agree on the session shape.
     ...authConfig.callbacks,
 
     async jwt({ token, user, trigger }) {
@@ -123,15 +125,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       return token;
-    },
-
-    async session({ session, token }) {
-      if (token.uid) {
-        session.user.id = token.uid;
-        session.user.role = token.role;
-        session.user.status = token.status;
-      }
-      return session;
     },
   },
 });

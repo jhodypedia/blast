@@ -1,6 +1,6 @@
 # Project Memory — WhatsApp Blast SaaS
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Purpose
 
@@ -10,20 +10,80 @@ next. Read this together with `RULES.md` and `AGENTS.md` before starting work.
 ## Current State
 
 The application is feature-complete for the ADMIN and USER surfaces described in
-`RULES.md`, and passes lint, typecheck, unit tests and a production build. It has
-**not** been run against a live MySQL/MariaDB or Redis instance, so all database,
-queue and WhatsApp paths are verified by types and build only. Redis absence is
-now handled deliberately rather than crashing the build (see Key Decisions), but
-Redis-dependent behaviour is still unexercised.
+`RULES.md`. Lint, typecheck, unit tests and a production build pass, and the
+delivery invariants now also pass as **integration tests against a live
+MariaDB 11.4** (portable instance on port 3307), so `FOR UPDATE SKIP LOCKED`
+claiming, lease recovery and ledger idempotency are verified by execution rather
+than by types. Redis is available locally as a portable instance on 6379. The
+app has also been **booted with the real `.env` and probed over HTTP** end to
+end (see "Live HTTP probe" below). The WhatsApp adapter is still unexercised
+against a real device.
 
 ### Verification (last full run)
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
-| Typecheck | `npx tsc --noEmit` | exit 0 |
-| Unit tests | `npx vitest run` | exit 0 — 133 tests, 12 files |
-| Build | `npx next build` | exit 0 — 22 routes, no `[ioredis] Unhandled error event` |
+| Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
+| Unit tests | `npm test` (`vitest run`) | exit 0 — 174 tests, 16 files |
+| Integration tests | `npm run test:integration` | exit 0 — 12 tests, 1 file, live MariaDB 11.4 on 3307 |
+| Build | `npm run build` | exit 0 — 22 routes, no `[ioredis] Unhandled error event` |
+
+### Live HTTP probe
+
+`next dev` was started against the real `.env` (XAMPP MariaDB 10.4 on 3306 +
+portable Redis on 6379) and driven with a throwaway Node script over
+`http://127.0.0.1:3000`. **41 assertions, 0 failures** after the fix below.
+What it covered:
+
+- `/`, `/login`, `/register` as an anonymous visitor.
+- `/api/health`: public response is `{"status":"ok"}` with `no-store` and no
+  dependency detail; a valid `HEALTH_CHECK_TOKEN` bearer adds
+  `checks.database` / `checks.redis` (both `true`); a **wrong** token silently
+  falls back to the public answer rather than erroring.
+- Auth.js `providers` (credentials only), `csrf`, `session` (`null` when
+  anonymous).
+- Anonymous `/admin`, `/admin/settings`, `/dashboard`, `/dashboard/wallet` all
+  302 to `/login?callbackUrl=…`.
+- Wrong password yields `?error=CredentialsSignin` and no session; correct admin
+  credentials sign in.
+- Session claims expose `role`, `status` and no `passwordHash`.
+- Every admin page returns 200 with an ADMIN session.
+- ADMIN hitting any `/dashboard/*` route 307s to `/admin` (no 5xx).
+- A signed-in ADMIN is bounced off `/login` and `/register` to `/admin`.
+- Sign-out clears the session cookie.
+
+The probe deliberately only scans **200** bodies for error markers; scanning 3xx
+bodies produced false failures.
+
+### Local infrastructure (must be started each session)
+
+Both are hidden processes, not Windows services, so they do **not** survive a
+reboot or logout. The binaries live under `.tools/` (gitignored); the launcher
+scripts were scratch `_*` files and have been deleted, so the commands are
+recorded here instead.
+
+Redis 8.10.1 → `redis://127.0.0.1:6379`:
+
+```powershell
+$d = 'C:\Users\admin\Desktop\project\wablast\.tools'
+Start-Process -WindowStyle Hidden `
+  -FilePath "$d\redis8\Redis-8.10.1-Windows-x64-msys2\redis-server.exe" `
+  -ArgumentList '--port','6379','--bind','127.0.0.1','--protected-mode','yes','--dir',"$d\redis-data"
+```
+
+MariaDB 11.4.9 (portable, own datadir) → port **3307**:
+
+```powershell
+$d = 'C:\Users\admin\Desktop\project\wablast\.tools'
+Start-Process -WindowStyle Hidden `
+  -FilePath "$d\mariadb\mariadb-11.4.9-winx64\bin\mysqld.exe" `
+  -ArgumentList "--datadir=$d\mariadb-data",'--port=3307','--bind-address=127.0.0.1','--skip-name-resolve','--console'
+```
+
+Only ever stop a `mysqld` whose `Path` is that exact binary — the XAMPP instance
+on 3306 must be left alone. Confirm readiness by executing
+`SELECT 1 FROM DUAL FOR UPDATE SKIP LOCKED;` rather than by parsing `VERSION()`.
 
 ## Architecture
 
@@ -93,6 +153,52 @@ Read-only page data comes from dedicated `queries.ts` modules
 - **Large form files were split** to stay under the editor write limit:
   `campaign-form.tsx` / `campaign-form-shared.tsx` / `campaign-delivery-fields.tsx`.
   Shared `Field`, `SPEED_OPTIONS` and form types live in the `-shared` file.
+- **MariaDB 10.6 / MySQL 8.0 is a hard floor**, not a preference.
+  `claimRecipients` and the start-job allocation depend on
+  `FOR UPDATE SKIP LOCKED`, which MariaDB 10.4 (what XAMPP ships) parses as a
+  syntax error (SQL 1064). There is no safe fallback: without SKIP LOCKED,
+  parallel workers either block on each other or take overlapping batches, and an
+  overlapping batch means a double send. Hence the portable MariaDB 11.4 instance
+  on 3307 rather than reusing XAMPP.
+- **Database capability is detected by behaviour, not by version string.**
+  `tests/integration/db-capabilities.ts` runs `SELECT 1 ... FOR UPDATE SKIP
+  LOCKED` inside a throwaway transaction and caches the outcome; forks and distro
+  builds misreport `VERSION()`, so parsing it would be wrong on exactly the
+  machines where it matters. `beforeAll` throws an actionable message when the
+  probe fails, instead of leaving five tests to fail with raw SQL 1064.
+- **Integration tests are excluded from `npm test`** by the `include` pattern in
+  `vitest.config.mts`, and live in `vitest.integration.config.mts` with
+  `maxWorkers: 1` + `fileParallelism: false`. Files must run sequentially because
+  they share fixture rows; the concurrency actually under test is created *inside*
+  a test with `Promise.all`, not by the runner.
+- **Integration fixtures clean up by id prefix (`itest-`), never `TRUNCATE`.** A
+  misconfigured `DATABASE_URL` can then only fail to find rows, not destroy a real
+  database. `scripts/prepare-test-db.ts` reinforces this: it refuses any database
+  name not matching `/test/i` and validates the identifier charset before
+  interpolating it into `CREATE DATABASE`.
+- **The Prisma CLI is invoked as
+  `spawnSync(process.execPath, ["node_modules/prisma/build/index.js", ...])`** in
+  `scripts/prepare-test-db.ts`. `npx` on Windows needs `.cmd` resolution plus a
+  shell, which brings quoting risk; calling the entrypoint with the current Node
+  binary avoids both. On this machine `npm.ps1`/`npx.ps1` are additionally blocked
+  by the execution policy, so `npm.cmd` is the only working shim from PowerShell.
+- **The initial migration was baselined, not re-created.** The dev database
+  already had the schema, so `migrate deploy` failed with P3005; the fix was
+  `prisma migrate resolve --applied 20260901000000_init` after confirming
+  `migrate diff --from-migrations --to-config-datasource` reported no difference.
+  Never `prisma db push` here.
+- **`Button` marks its `asChild` child with `Slottable`.** The button always
+  renders the loading spinner as a *sibling* of `children`, so Radix `Slot` saw
+  two children and threw `Slot failed to slot onto its children`. This was a real
+  500 on `/admin/campaigns` (the only page using `<Button asChild>` inside a
+  server component) and was found by the live HTTP probe, not by types — the
+  failure is a runtime invariant of `Slot`, so nothing in `tsc` or the unit suite
+  could have caught it. `src/components/ui/button.test.tsx` now covers it with
+  `renderToStaticMarkup`.
+- **`src/proxy.test.ts` casts through `unknown`.** `auth()` is typed as an
+  `AppRouteHandlerFn` (two parameters), while the `next-auth` stub returns the
+  bare one-parameter decision function, so a direct cast is not assignable under
+  `strict`.
 
 ## Delivery Integrity
 
@@ -118,44 +224,47 @@ never mutated or deleted.
 
 ## Known Gaps
 
-1. **No live-infrastructure testing.** MariaDB and Redis were unavailable. The
-   raw `FOR UPDATE ... SKIP LOCKED` statement has never executed against the real
-   database, and the concurrency, stale-lease-recovery and "one SENT recipient
-   credits exactly one earning" tests that `RULES.md` §22 requires are therefore
-   still missing. These need a live database to be meaningful and are the
-   highest-value remaining work.
-2. **No integration or E2E tests.** Only unit tests exist (validation,
-   normalization, crypto, parser, progress derivation, withdrawal transitions,
-   WhatsApp error classification).
-3. **WhatsApp adapter unexercised.** Pairing, QR, reconnect and send have not run
+1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`
+   covers concurrent claiming, `markSending` ownership, lease expiry and crash
+   recovery, clean-stop release, earning idempotency (replay and concurrent) and
+   the failure/ambiguity paths — 12 tests, all green against MariaDB 11.4. Auth,
+   device limits, target import, campaign assignment, wallet and withdrawal still
+   have no integration tests. No E2E tests exist at all.
+2. **WhatsApp adapter unexercised.** Pairing, QR, reconnect and send have not run
    against a real device.
-4. **Prisma migrations not applied.** Generated but never run with
-   `migrate deploy` against a real server.
-5. **Turnstile** falls back to a hidden `development-placeholder` token in the
+3. **Turnstile** falls back to a hidden `development-placeholder` token in the
    widget when no site key is configured. `verifyTurnstileToken` throws
    `CAPTCHA_FAILED` whenever the secret is missing and `NODE_ENV === "production"`,
    and skips only outside production, so a misconfigured production deploy fails
    closed rather than losing protection. The real widget has not been exercised
    end to end.
-6. **No Redis available on this machine.** Probed and confirmed absent: no
-   `docker`, no `redis-server`, no `memurai`; `wsl` is present but has no
-   installed distribution. The graceful-degradation work above means the app
-   builds and runs without Redis, but nothing that actually needs Redis (rate
-   limiting, queues, workers, pairing challenges) has been exercised. Rate
-   limiting fails closed, so login/registration/withdrawal will be **rejected**
-   until a real Redis is reachable — this is not a usable dev setup, only a safe
-   one. A decision on how to provide Redis (Memurai, a WSL distro, Docker
-   Desktop, or a remote `REDIS_URL`) is still outstanding.
+4. **The dev database on XAMPP (3306) cannot execute claims.** It is MariaDB 10.4,
+   which has no `FOR UPDATE SKIP LOCKED`. Anything that starts a blast job or
+   claims recipients will fail there with SQL 1064. Either point `DATABASE_URL` at
+   the portable 11.4 instance on 3307 and run `prisma migrate deploy` against the
+   `blast` database there, or accept that only non-delivery flows work in dev. Not
+   yet decided.
+5. **Portable Redis and MariaDB are not services.** Both must be relaunched after
+   every reboot or logout (commands under "Local infrastructure"); a stale
+   assumption here shows up as connection-refused rather than as a clear error.
+6. **No automated coverage of the HTTP surface.** The probe described above was a
+   throwaway script and has been deleted. Nothing in `npm run verify` would catch
+   a page that 500s at runtime; only `src/components/ui/button.test.tsx` guards
+   the specific `Slot` regression that caused one. A real E2E harness is still
+   missing.
 
 ## Next Task
 
-Provide a reachable Redis, then bring up MySQL/MariaDB, then in order:
+1. Resolve gap 4: decide whether dev moves to port 3307, and apply the migration
+   there if so.
+2. Exercise `npm run worker` against a real device for one small seeded campaign,
+   end to end, and record what the WhatsApp adapter actually does on pair,
+   reconnect and send.
+3. Extend integration coverage outward from delivery: device limits, target
+   import, then withdrawal hold/release.
+4. Add a checked-in smoke test for the HTTP surface (gap 6) so route-level 500s
+   are caught by `npm run verify` instead of by hand.
+5. Re-run `npm run verify` plus `npm run test:integration` after each of the
+   above.
 
-1. Point `REDIS_URL` at the chosen instance and confirm `/api/health` with the
-   `HEALTH_CHECK_TOKEN` bearer token reports `redis: true`.
-2. `npm run prisma:deploy` and `npm run db:seed`; fix any migration or seed error.
-3. Add `*.integration.test.ts` covering: parallel `claimRecipients` calls never
-   returning the same row, expired-lease recovery, and a single earning per
-   `SENT` recipient.
-4. Exercise `npm run worker` against a real device for one small campaign.
-5. Re-run `npm run verify`.
+
