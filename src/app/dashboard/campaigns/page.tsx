@@ -1,18 +1,30 @@
 import type { Metadata } from "next";
-import { Megaphone } from "lucide-react";
+import Link from "next/link";
+import {
+  CalendarClock,
+  Coins,
+  Gauge,
+  Megaphone,
+  ShieldAlert,
+  Smartphone,
+  Target,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { listCampaignsForUser } from "@/lib/campaign/service";
 import { listUserDevices } from "@/lib/device/service";
 import { formatMoney } from "@/lib/money";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  DetailRow,
+  EmptyState,
+  Notice,
+  PageHeader,
+  PageSections,
+} from "@/components/ui/page";
 import { StartBlastForm } from "@/components/blast/start-blast-form";
 
 export const metadata: Metadata = { title: "Campaigns" };
@@ -35,94 +47,134 @@ export default async function UserCampaignsPage() {
     .filter((device) => device.status === "CONNECTED")
     .map((device) => ({ id: device.id, label: device.label }));
 
+  const startable = campaigns.filter((campaign) => campaign.startable).length;
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Campaigns</h1>
-        <p className="text-sm text-muted-foreground">
-          Campaigns assigned to you by the administrator. Recipients are managed
-          centrally and are never shown here.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Megaphone className="size-5" />}
+        title="Campaigns"
+        description="Campaigns assigned to you by the administrator. Recipients are managed centrally and are never shown here."
+        actions={
+          campaigns.length > 0 ? (
+            <Badge variant={startable > 0 ? "success" : "warning"}>
+              {startable} available · {campaigns.length} assigned
+            </Badge>
+          ) : undefined
+        }
+      />
 
-      {campaigns.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <span className="rounded-full bg-muted p-3">
-              <Megaphone
-                className="size-6 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </span>
-            <p className="text-sm text-muted-foreground">
-              No campaigns are available right now. Check back later.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {campaigns.map((campaign) => (
-            <Card key={campaign.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate">{campaign.name}</CardTitle>
-                    <CardDescription>{campaign.description}</CardDescription>
-                  </div>
-                  <Badge variant={campaign.startable ? "success" : "warning"}>
-                    {campaign.startable ? "Available" : "Quota used"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">
-                      Payout per send
-                    </dt>
-                    <dd className="font-medium text-success">
-                      {formatMoney(campaign.payoutPerSend, campaign.currency)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">
-                      Your quota
-                    </dt>
-                    <dd className="font-medium">
-                      {campaign.quotaRemaining} of {campaign.quotaPerUser} left
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">
-                      Allowed speeds
-                    </dt>
-                    <dd className="font-medium">
-                      {campaign.allowedSpeeds.join("s, ")}s
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Ends</dt>
-                    <dd className="font-medium">
-                      {campaign.scheduledEndAt.toISOString().slice(0, 16)} UTC
-                    </dd>
-                  </div>
-                </dl>
+      <PageSections>
+        {connectedDevices.length === 0 && campaigns.length > 0 ? (
+          <Notice
+            tone="warning"
+            icon={<ShieldAlert className="size-5" />}
+            title="No connected device"
+          >
+            Pair and connect a device before starting a blast job.{" "}
+            <Link
+              href="/dashboard/devices"
+              className="font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              Manage devices
+            </Link>
+          </Notice>
+        ) : null}
 
-                <div className="border-t border-border pt-4">
-                  <StartBlastForm
-                    campaignId={campaign.id}
-                    devices={connectedDevices}
-                    allowedSpeeds={campaign.allowedSpeeds}
-                    requireTermsAccept={campaign.requireTermsAccept}
-                    disabled={!campaign.startable}
-                    disabledReason="You have used your full quota for this campaign."
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+        {campaigns.length === 0 ? (
+          <EmptyState
+            icon={<Megaphone className="size-6" />}
+            title="No campaigns available"
+            description="Nothing is assigned to your account right now. Check back later or contact the platform team."
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dashboard">
+                  <Smartphone aria-hidden="true" />
+                  Back to overview
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <Stagger className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {campaigns.map((campaign) => (
+              <StaggerItem key={campaign.id}>
+                <Card hover className="flex h-full flex-col">
+                  <div className="flex items-start gap-3.5 border-b border-border/70 p-5 sm:p-6">
+                    <IconTile
+                      tone={campaign.startable ? "success" : "warning"}
+                      className="mt-0.5"
+                    >
+                      <Megaphone className="size-5" />
+                    </IconTile>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className="truncate text-base font-bold tracking-tight sm:text-lg">
+                          {campaign.name}
+                        </h2>
+                        <Badge
+                          variant={campaign.startable ? "success" : "warning"}
+                        >
+                          {campaign.startable ? "Available" : "Quota used"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {campaign.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <CardContent className="flex flex-1 flex-col p-5 pt-4 sm:p-6 sm:pt-5">
+                    <dl>
+                      <DetailRow
+                        label="Payout per send"
+                        icon={<Coins className="size-4 text-success" />}
+                        value={
+                          <span className="font-bold text-success">
+                            {formatMoney(
+                              campaign.payoutPerSend,
+                              campaign.currency,
+                            )}
+                          </span>
+                        }
+                      />
+                      <DetailRow
+                        label="Your quota"
+                        icon={<Target className="size-4 text-info" />}
+                        value={`${campaign.quotaRemaining} of ${campaign.quotaPerUser} left`}
+                      />
+                      <DetailRow
+                        label="Allowed speeds"
+                        icon={<Gauge className="size-4 text-primary" />}
+                        value={`${campaign.allowedSpeeds.join("s, ")}s`}
+                      />
+                      <DetailRow
+                        label="Ends"
+                        icon={<CalendarClock className="size-4 text-warning" />}
+                        value={`${campaign.scheduledEndAt
+                          .toISOString()
+                          .slice(0, 16)
+                          .replace("T", " ")} UTC`}
+                      />
+                    </dl>
+
+                    <div className="mt-5 border-t border-border/70 pt-5">
+                      <StartBlastForm
+                        campaignId={campaign.id}
+                        devices={connectedDevices}
+                        allowedSpeeds={campaign.allowedSpeeds}
+                        requireTermsAccept={campaign.requireTermsAccept}
+                        disabled={!campaign.startable}
+                        disabledReason="You have used your full quota for this campaign."
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        )}
+      </PageSections>
+    </>
   );
 }

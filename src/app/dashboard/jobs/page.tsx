@@ -1,19 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Send } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Coins,
+  Gauge,
+  Megaphone,
+  Send,
+  Smartphone,
+  XCircle,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { listUserJobs } from "@/lib/blast/queries";
 import { formatMoney } from "@/lib/money";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress, type ProgressTone } from "@/components/ui/progress";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import { EmptyState, PageHeader, PageSections } from "@/components/ui/page";
 import { JobControls } from "@/components/blast/job-controls";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Blast jobs" };
 
@@ -31,128 +40,202 @@ const STATUS_VARIANT: Record<
   FAILED: "danger",
 };
 
+const PROGRESS_TONE: Record<string, ProgressTone> = {
+  PAUSED: "warning",
+  COMPLETED: "success",
+  PARTIAL_FAILED: "warning",
+  FAILED: "danger",
+  CANCELLED: "info",
+};
+
 /** The operator's own jobs. Progress comes from recipient rows, not counters. */
 export default async function JobsPage() {
   const actor = await requireUser();
   const jobs = await listUserJobs(actor.id, { limit: 50 });
 
+  const live = jobs.filter((job) =>
+    ["PENDING", "QUEUED", "RUNNING", "PAUSED"].includes(job.status),
+  ).length;
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Blast jobs</h1>
-        <p className="text-sm text-muted-foreground">
-          Your delivery runs. Earnings are credited only for confirmed sends.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Send className="size-5" />}
+        title="Blast jobs"
+        description="Your delivery runs. Earnings are credited only for confirmed sends."
+        actions={
+          <>
+            {jobs.length > 0 ? (
+              <Badge variant={live > 0 ? "info" : "neutral"}>
+                {live} live · {jobs.length} total
+              </Badge>
+            ) : null}
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/campaigns">
+                <Megaphone aria-hidden="true" />
+                Campaigns
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      {jobs.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <span className="rounded-full bg-muted p-3">
-              <Send
-                className="size-6 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </span>
-            <p className="text-sm text-muted-foreground">
-              You have not started any jobs yet.
-            </p>
-            <Link
-              href="/dashboard/campaigns"
-              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Browse available campaigns
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {jobs.map((job) => (
-            <Card key={job.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate">
-                      <Link
-                        href={`/dashboard/jobs/${job.id}`}
-                        className="underline-offset-4 hover:underline"
-                      >
-                        {job.campaignName}
-                      </Link>
-                    </CardTitle>
-                    <CardDescription>
-                      {job.deviceLabel} · {job.speedSeconds}s ·{" "}
-                      {formatMoney(job.payoutPerSend, job.currency)} per send
-                    </CardDescription>
+      <PageSections>
+        {jobs.length === 0 ? (
+          <EmptyState
+            icon={<Send className="size-6" />}
+            title="No jobs yet"
+            description="Start a job from an assigned campaign and its progress will appear here."
+            action={
+              <Button asChild size="sm">
+                <Link href="/dashboard/campaigns">
+                  <Megaphone aria-hidden="true" />
+                  Browse campaigns
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <Stagger className="space-y-4">
+            {jobs.map((job) => (
+              <StaggerItem key={job.id}>
+                <Card hover>
+                  <div className="flex flex-wrap items-start gap-3.5 border-b border-border/70 p-5 sm:p-6">
+                    <IconTile
+                      tone={
+                        job.status === "COMPLETED"
+                          ? "success"
+                          : job.status === "FAILED"
+                            ? "danger"
+                            : job.status === "PAUSED"
+                              ? "warning"
+                              : "primary"
+                      }
+                      className="mt-0.5"
+                    >
+                      <Send className="size-5" />
+                    </IconTile>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-base font-bold tracking-tight sm:text-lg">
+                        <Link
+                          href={`/dashboard/jobs/${job.id}`}
+                          className="rounded underline-offset-4 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        >
+                          {job.campaignName}
+                        </Link>
+                      </h2>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Smartphone
+                            aria-hidden="true"
+                            className="size-3.5 text-primary"
+                          />
+                          {job.deviceLabel}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Gauge
+                            aria-hidden="true"
+                            className="size-3.5 text-info"
+                          />
+                          {job.speedSeconds}s
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Coins
+                            aria-hidden="true"
+                            className="size-3.5 text-success"
+                          />
+                          {formatMoney(job.payoutPerSend, job.currency)} per send
+                        </span>
+                      </p>
+                    </div>
+                    <Badge variant={STATUS_VARIANT[job.status] ?? "neutral"}>
+                      {job.status}
+                    </Badge>
                   </div>
-                  <Badge variant={STATUS_VARIANT[job.status] ?? "neutral"}>
-                    {job.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div
-                    role="progressbar"
-                    aria-valuenow={job.percent}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label={`${job.campaignName} progress`}
-                    className="h-2 w-full overflow-hidden rounded-full bg-muted"
-                  >
-                    <div
-                      className="h-full rounded-full bg-success transition-transform"
-                      style={{ width: `${job.percent}%` }}
-                    />
-                  </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                    <Stat label="Sent" value={job.progress.sent} tone="success" />
-                    <Stat label="Pending" value={job.progress.pending} />
-                    <Stat label="Failed" value={job.progress.failed} tone="danger" />
-                    <Stat
-                      label="Review"
-                      value={job.progress.needsReconciliation}
-                      tone="warning"
-                    />
-                  </dl>
-                </div>
 
-                <JobControls
-                  blastJobId={job.id}
-                  status={job.status}
-                  allowUserPause={job.allowUserPause}
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+                  <CardContent className="space-y-5 p-5 pt-5 sm:p-6 sm:pt-6">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between text-xs font-semibold">
+                        <span className="text-muted-foreground">
+                          {job.progress.sent} / {job.quotaTotal} delivered
+                        </span>
+                        <span className="text-primary">{job.percent}%</span>
+                      </div>
+                      <Progress
+                        value={job.percent}
+                        tone={PROGRESS_TONE[job.status] ?? "primary"}
+                        aria-label={`${job.campaignName} progress`}
+                      />
+                      <dl className="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+                        <Stat
+                          label="Sent"
+                          value={job.progress.sent}
+                          tone="success"
+                          icon={<CheckCircle2 className="size-3.5" />}
+                        />
+                        <Stat
+                          label="Pending"
+                          value={job.progress.pending}
+                          tone="neutral"
+                          icon={<Clock className="size-3.5" />}
+                        />
+                        <Stat
+                          label="Failed"
+                          value={job.progress.failed}
+                          tone="danger"
+                          icon={<XCircle className="size-3.5" />}
+                        />
+                        <Stat
+                          label="Review"
+                          value={job.progress.needsReconciliation}
+                          tone="warning"
+                          icon={<AlertTriangle className="size-3.5" />}
+                        />
+                      </dl>
+                    </div>
+
+                    <JobControls
+                      blastJobId={job.id}
+                      status={job.status}
+                      allowUserPause={job.allowUserPause}
+                    />
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        )}
+      </PageSections>
+    </>
   );
 }
 
+/** Compact recipient-state counter tile. */
 function Stat({
   label,
   value,
   tone,
+  icon,
 }: {
   label: string;
   value: number;
-  tone?: "success" | "danger" | "warning";
+  tone: "success" | "danger" | "warning" | "neutral";
+  icon: React.ReactNode;
 }) {
-  const toneClass =
-    tone === "success"
-      ? "text-success"
-      : tone === "danger"
-        ? "text-destructive"
-        : tone === "warning"
-          ? "text-warning-foreground"
-          : "text-foreground";
+  const tones = {
+    success: "border-success/25 bg-success/8 text-success",
+    danger: "border-destructive/25 bg-destructive/8 text-destructive",
+    warning: "border-warning/25 bg-warning/8 text-warning",
+    neutral: "border-border bg-surface/60 text-muted-foreground",
+  } as const;
 
   return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`font-semibold ${toneClass}`}>{value}</dd>
+    <div className={cn("rounded-lg border p-3", tones[tone])}>
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </dt>
+      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
     </div>
   );
 }

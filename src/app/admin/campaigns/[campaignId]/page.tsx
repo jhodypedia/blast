@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, Megaphone, PencilLine, Workflow } from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { PageHeader, PageSections, SectionCard } from "@/components/ui/page";
 import { CampaignForm } from "@/components/admin/campaign-form";
 import { CampaignTransitionControls } from "@/components/admin/campaign-transition-controls";
 
@@ -78,47 +75,51 @@ export default async function EditCampaignPage({
   const lockEconomics = campaign._count.recipients > 0;
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {campaign.name}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Content version {campaign.contentVersion} ·{" "}
-            {campaign._count.recipients} recipient
-            {campaign._count.recipients === 1 ? "" : "s"} allocated
-          </p>
-        </div>
-        <Badge variant={campaign.status === "ACTIVE" ? "success" : "neutral"}>
-          {campaign.status}
-        </Badge>
-      </header>
+    <>
+      <div className="mb-5">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/admin/campaigns">
+            <ArrowLeft aria-hidden="true" />
+            All campaigns
+          </Link>
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lifecycle</CardTitle>
-          <CardDescription>
-            Running jobs keep the policy snapshot they started with.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <PageHeader
+        icon={<Megaphone className="size-5" />}
+        tone={campaign.status === "ACTIVE" ? "success" : "info"}
+        title={campaign.name}
+        description={`Content version ${campaign.contentVersion} · ${
+          campaign._count.recipients
+        } recipient${
+          campaign._count.recipients === 1 ? "" : "s"
+        } allocated. Recipient numbers are never rendered.`}
+        actions={
+          <Badge variant={campaign.status === "ACTIVE" ? "success" : "neutral"}>
+            {campaign.status}
+          </Badge>
+        }
+      />
+
+      <PageSections>
+        <SectionCard
+          title="Lifecycle"
+          description="Running jobs keep the policy snapshot they started with."
+          icon={<Workflow className="size-5" />}
+          tone={campaign.status === "ACTIVE" ? "success" : "primary"}
+        >
           <CampaignTransitionControls
             campaignId={campaign.id}
             status={campaign.status}
           />
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Campaign details</CardTitle>
-          <CardDescription>
-            Editing the message increments the content version; in-flight jobs are
-            unaffected.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <SectionCard
+          title="Campaign details"
+          description="Editing the message increments the content version; in-flight jobs are unaffected."
+          icon={<PencilLine className="size-5" />}
+          tone="info"
+        >
           <CampaignForm
             lockEconomics={lockEconomics}
             targetLists={lists.map((list) => ({
@@ -157,8 +158,8 @@ export default async function EditCampaignPage({
               scheduledEndAt: toLocalInput(campaign.scheduledEndAt),
             }}
           />
-        </CardContent>
-      </Card>
-    </div>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }

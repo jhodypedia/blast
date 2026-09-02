@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
-import { Wallet } from "lucide-react";
+import {
+  BanknoteArrowUp,
+  Coins,
+  Landmark,
+  Receipt,
+  Scissors,
+  UserCog,
+  Wallet,
+} from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import {
@@ -7,14 +15,15 @@ import {
   listWithdrawalsForAdmin,
 } from "@/lib/admin/queries";
 import { formatMoney } from "@/lib/money";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  EmptyState,
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 import { WithdrawalReviewControls } from "@/components/admin/withdrawal-review-controls";
 import { WalletRequestReviewControls } from "@/components/admin/wallet-request-review-controls";
 
@@ -46,118 +55,168 @@ export default async function AdminWithdrawalsPage() {
     listWalletChangeRequests(),
   ]);
 
+  const pending = withdrawals.filter((row) => row.status === "PENDING").length;
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Withdrawals</h1>
-        <p className="text-sm text-muted-foreground">
-          {total} request{total === 1 ? "" : "s"}. Account numbers are shown
-          masked; full details are never rendered.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Wallet className="size-5" />}
+        tone="success"
+        title="Withdrawals"
+        description="Account numbers are shown masked; full details are never rendered."
+        actions={
+          <>
+            <Badge variant={pending > 0 ? "warning" : "neutral"}>
+              {pending} pending
+            </Badge>
+            <Badge variant="info">{total} total</Badge>
+          </>
+        }
+      />
 
-      {walletRequests.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Wallet change requests</CardTitle>
-            <CardDescription>
-              Withdrawals stay paused for these operators until a decision is
-              recorded.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {walletRequests.map((request) => (
-              <div
-                key={request.id}
-                className="flex flex-col gap-2 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {request.userEmail}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    New: {request.providerName} · {request.accountMasked} ·{" "}
-                    {request.createdAt.toISOString().slice(0, 10)}
-                  </p>
-                </div>
-                <WalletRequestReviewControls changeRequestId={request.id} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
+      <PageSections>
+        {walletRequests.length > 0 ? (
+          <SectionCard
+            title="Wallet change requests"
+            description="Withdrawals stay paused for these operators until a decision is recorded."
+            icon={<Landmark className="size-5" />}
+            tone="warning"
+            actions={<Badge variant="warning">{walletRequests.length}</Badge>}
+          >
+            <Stagger className="space-y-3">
+              {walletRequests.map((request) => (
+                <StaggerItem key={request.id}>
+                  <div className="flex flex-col gap-3 rounded-xl border border-warning/25 bg-warning/8 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <IconTile tone="warning" className="size-9 shrink-0">
+                        <UserCog className="size-4" />
+                      </IconTile>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {request.userEmail}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          New: {request.providerName} · {request.accountMasked} ·{" "}
+                          {request.createdAt.toISOString().slice(0, 10)}
+                        </p>
+                      </div>
+                    </div>
+                    <WalletRequestReviewControls changeRequestId={request.id} />
+                  </div>
+                </StaggerItem>
+              ))}
+            </Stagger>
+          </SectionCard>
+        ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Requests</CardTitle>
-          <CardDescription>
-            Oldest first. Rejecting releases the held balance back to the
-            operator.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <SectionCard
+          title="Requests"
+          description="Oldest first. Rejecting releases the held balance back to the operator."
+          icon={<BanknoteArrowUp className="size-5" />}
+        >
           {withdrawals.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 p-10 text-center">
-              <span className="rounded-full bg-muted p-3">
-                <Wallet
-                  className="size-6 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              </span>
-              <p className="text-sm text-muted-foreground">
-                No withdrawal requests.
-              </p>
-            </div>
+            <EmptyState
+              icon={<Wallet className="size-6" />}
+              title="No withdrawal requests"
+              description="Payout requests submitted by operators land in this queue."
+            />
           ) : (
-            withdrawals.map((row) => (
-              <div
-                key={row.id}
-                className="space-y-3 rounded-lg border border-border p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {row.userName || row.userEmail}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {row.userEmail} · {row.providerName} · {row.accountMasked}
-                    </p>
-                  </div>
-                  <Badge variant={STATUS_VARIANT[row.status] ?? "neutral"}>
-                    {row.status}
-                  </Badge>
-                </div>
+            <Stagger className="space-y-3">
+              {withdrawals.map((row) => (
+                <StaggerItem key={row.id}>
+                  <div className="rounded-xl border border-border bg-surface/60 p-4 transition-colors hover:border-primary/30 hover:bg-surface">
+                    <div className="flex flex-wrap items-start gap-3">
+                      <IconTile
+                        tone={
+                          row.status === "PAID"
+                            ? "success"
+                            : row.status === "REJECTED"
+                              ? "danger"
+                              : "warning"
+                        }
+                        className="size-9 shrink-0"
+                      >
+                        <Receipt className="size-4" />
+                      </IconTile>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {row.userName || row.userEmail}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {row.userEmail} · {row.providerName} ·{" "}
+                          {row.accountMasked}
+                        </p>
+                      </div>
+                      <Badge variant={STATUS_VARIANT[row.status] ?? "neutral"}>
+                        {row.status}
+                      </Badge>
+                    </div>
 
-                <dl className="grid grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <dt className="text-muted-foreground">Gross</dt>
-                    <dd className="font-semibold">
-                      {formatMoney(row.amount, row.currency)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Fee</dt>
-                    <dd className="font-medium">
-                      {formatMoney(row.fee, row.currency)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Net payout</dt>
-                    <dd className="font-semibold text-success">
-                      {formatMoney(row.netAmount, row.currency)}
-                    </dd>
-                  </div>
-                </dl>
+                    <dl className="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
+                      <Amount
+                        label="Gross"
+                        value={formatMoney(row.amount, row.currency)}
+                        icon={<Coins className="size-3.5 text-info" />}
+                      />
+                      <Amount
+                        label="Fee"
+                        value={formatMoney(row.fee, row.currency)}
+                        icon={<Scissors className="size-3.5 text-warning" />}
+                      />
+                      <Amount
+                        label="Net payout"
+                        value={formatMoney(row.netAmount, row.currency)}
+                        icon={
+                          <BanknoteArrowUp className="size-3.5 text-success" />
+                        }
+                        emphasise
+                      />
+                    </dl>
 
-                <WithdrawalReviewControls
-                  withdrawalId={row.id}
-                  status={row.status}
-                />
-              </div>
-            ))
+                    <div className="mt-4 border-t border-border/70 pt-4">
+                      <WithdrawalReviewControls
+                        withdrawalId={row.id}
+                        status={row.status}
+                      />
+                    </div>
+                  </div>
+                </StaggerItem>
+              ))}
+            </Stagger>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </PageSections>
+    </>
+  );
+}
+
+/** Money cell inside a withdrawal row. Values are pre-formatted Decimal strings. */
+function Amount({
+  label,
+  value,
+  icon,
+  emphasise,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  emphasise?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </dt>
+      <dd
+        className={
+          emphasise
+            ? "mt-1 text-sm font-bold text-success"
+            : "mt-1 text-sm font-bold text-foreground"
+        }
+      >
+        {value}
+      </dd>
     </div>
   );
 }

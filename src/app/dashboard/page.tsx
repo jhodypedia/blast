@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Megaphone, Send, Smartphone, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  Activity,
+  Megaphone,
+  Send,
+  Smartphone,
+  Wallet,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { listUserDevices } from "@/lib/device/service";
@@ -10,15 +17,18 @@ import { getBalance } from "@/lib/ledger/service";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  EmptyState,
+  PageHeader,
+  PageSections,
+  SectionCard,
+  StatCard,
+  StatGrid,
+} from "@/components/ui/page";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -44,123 +54,128 @@ export default async function DashboardPage() {
   ).length;
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back{actor.name ? `, ${actor.name}` : ""}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Your devices, available campaigns and earnings at a glance.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Activity className="size-5" />}
+        title={`Welcome back${actor.name ? `, ${actor.name}` : ""}`}
+        description="Your devices, available campaigns and earnings at a glance."
+        actions={
+          <Button asChild>
+            <Link href="/dashboard/campaigns">
+              <Megaphone aria-hidden="true" />
+              Browse campaigns
+            </Link>
+          </Button>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Available balance"
-          value={formatMoney(balance.available, currency)}
-          hint={
-            balance.held === "0.0000"
-              ? "No withdrawals on hold"
-              : `${formatMoney(balance.held, currency)} on hold`
-          }
-          icon={<Wallet className="size-5 text-success" aria-hidden="true" />}
-        />
-        <StatCard
-          label="Connected devices"
-          value={`${connected} / ${devices.length}`}
-          hint="Connected of registered"
-          icon={
-            <Smartphone className="size-5 text-primary" aria-hidden="true" />
-          }
-        />
-        <StatCard
-          label="Campaigns available"
-          value={String(campaigns.filter((c) => c.startable).length)}
-          hint={`${campaigns.length} assigned to you`}
-          icon={<Megaphone className="size-5 text-info" aria-hidden="true" />}
-        />
-        <StatCard
-          label="Running jobs"
-          value={String(jobs.length)}
-          hint="Queued, running or paused"
-          icon={<Send className="size-5 text-primary" aria-hidden="true" />}
-        />
-      </div>
+      <PageSections>
+        <StatGrid>
+          <StatCard
+            label="Available balance"
+            tone="success"
+            value={formatMoney(balance.available, currency)}
+            hint={
+              balance.held === "0.0000"
+                ? "No withdrawals on hold"
+                : `${formatMoney(balance.held, currency)} on hold`
+            }
+            icon={<Wallet className="size-5" />}
+          />
+          <StatCard
+            label="Connected devices"
+            tone="primary"
+            value={`${connected} / ${devices.length}`}
+            hint="Connected of registered"
+            icon={<Smartphone className="size-5" />}
+          />
+          <StatCard
+            label="Campaigns available"
+            tone="info"
+            value={String(campaigns.filter((c) => c.startable).length)}
+            hint={`${campaigns.length} assigned to you`}
+            icon={<Megaphone className="size-5" />}
+          />
+          <StatCard
+            label="Running jobs"
+            tone="warning"
+            value={String(jobs.length)}
+            hint="Queued, running or paused"
+            icon={<Send className="size-5" />}
+          />
+        </StatGrid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Live jobs</CardTitle>
-          <CardDescription>
-            Progress is calculated from confirmed delivery records.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {jobs.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                No jobs are running. Pick an available campaign to start one.
-              </p>
-              <Button asChild variant="outline" size="sm" className="mt-3">
-                <Link href="/dashboard/campaigns">
-                  Browse campaigns
+        <SectionCard
+          title="Live jobs"
+          description="Progress is calculated from confirmed delivery records."
+          icon={<Send className="size-5" />}
+          actions={
+            jobs.length > 0 ? (
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/dashboard/jobs">
+                  All jobs
                   <ArrowRight aria-hidden="true" />
                 </Link>
               </Button>
-            </div>
+            ) : undefined
+          }
+        >
+          {jobs.length === 0 ? (
+            <EmptyState
+              icon={<Send className="size-6" />}
+              title="No jobs running"
+              description="Pick an available campaign to start your first blast job."
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/dashboard/campaigns">
+                    Browse campaigns
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </Button>
+              }
+            />
           ) : (
-            jobs.map((job) => (
-              <Link
-                key={job.id}
-                href={`/dashboard/jobs/${job.id}`}
-                className="flex min-h-11 flex-col gap-2 rounded-lg border border-border p-4 transition-colors hover:bg-accent/50 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {job.campaignName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {job.deviceLabel} · {job.speedSeconds}s ·{" "}
-                    {job.progress.sent}/{job.quotaTotal} sent
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={job.status === "PAUSED" ? "warning" : "info"}>
-                    {job.status}
-                  </Badge>
-                  <span className="text-sm font-medium">{job.percent}%</span>
-                </div>
-              </Link>
-            ))
+            <Stagger className="space-y-3">
+              {jobs.map((job) => (
+                <StaggerItem key={job.id}>
+                  <Link
+                    href={`/dashboard/jobs/${job.id}`}
+                    className="lift block rounded-xl border border-border bg-surface/60 p-4 hover:border-primary/45 hover:bg-surface hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {job.campaignName}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {job.deviceLabel} · {job.speedSeconds}s ·{" "}
+                          {job.progress.sent}/{job.quotaTotal} sent
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge
+                          variant={job.status === "PAUSED" ? "warning" : "info"}
+                        >
+                          {job.status}
+                        </Badge>
+                        <span className="text-sm font-bold text-primary">
+                          {job.percent}%
+                        </span>
+                      </div>
+                    </div>
+                    <Progress
+                      value={job.percent}
+                      tone={job.status === "PAUSED" ? "warning" : "primary"}
+                      className="mt-3"
+                      aria-label={`${job.campaignName} delivery progress`}
+                    />
+                  </Link>
+                </StaggerItem>
+              ))}
+            </Stagger>
           )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-3 p-5">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-xl font-semibold">{value}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
-        </div>
-        <span className="shrink-0 rounded-lg bg-muted p-2">{icon}</span>
-      </CardContent>
-    </Card>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }

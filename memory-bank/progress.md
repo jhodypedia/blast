@@ -29,6 +29,23 @@ against a real device.
 | Integration tests | `npm run test:integration` | exit 0 — 12 tests, 1 file, live MariaDB 11.4 on 3307 |
 | Build | `npm run build` | exit 0 — 22 routes, no `[ioredis] Unhandled error event` |
 
+Re-run after the dark-green frontend redesign and the `motion.tsx` rewrite
+(2026-09-02): lint exit 0, `tsc --noEmit` exit 0, `vitest run` **178/178 in 17
+files** (the new file is `src/components/ui/motion.test.tsx`), `npm run build`
+exit 0 with the same 22 routes. Integration tests were **not** re-run for either
+change (no schema, query or service file was touched).
+
+Two build-tooling notes for this machine, both cost time:
+
+- `npm.ps1` is blocked by the PowerShell execution policy, so every command must
+  go through `cmd /c "npm …"`. Terminal capture is also unreliable here; redirect
+  to a log file and read the file instead of trusting the captured output.
+- **Never run two `next build`s concurrently.** Doing so corrupted
+  `.next/dev/types/routes.d.ts` mid-write and produced a misleading
+  `Failed to type check` with `TS1434`/`TS1109`/`TS1160` inside that generated
+  file. The source was fine; a single clean rebuild passed. Treat syntax errors
+  reported *inside `.next/`* as a stale-artifact symptom, not a code defect.
+
 ### Live HTTP probe
 
 `next dev` was started against the real `.env` (XAMPP MariaDB 10.4 on 3306 +
@@ -111,6 +128,56 @@ WhatsApp call goes through `lib/whatsapp/adapter.ts`.
 Read-only page data comes from dedicated `queries.ts` modules
 (`lib/admin/queries.ts`, `lib/admin/job-queries.ts`, `lib/blast/queries.ts`,
 `lib/wallet/queries.ts`) so pages never import a mutating service.
+
+## Frontend Design System (dark-green premium theme)
+
+The whole UI layer was rebuilt on a single flat dark-green design system. No
+backend, API, Prisma, action, service, queue or auth file was touched by that
+work: every change is in `src/app/**/page.tsx` / `layout.tsx`,
+`src/app/globals.css` and `src/components/**`. Pages kept their existing data
+loading and their existing server actions; only presentation changed.
+
+Tokens (`src/app/globals.css`, `@theme inline`):
+
+- Everything is defined in `oklch` on a green hue (~160–166) so contrast is
+  predictable: `--background` 0.152 → `--surface` 0.185 → `--surface-strong`
+  0.222, text `--foreground` 0.975 and `--muted-foreground` 0.755.
+- `--primary` / `--ring` are emerald (0.735–0.79 L). Semantic tones are
+  `--success` (emerald), `--warning` (amber), `--destructive` (rose) and
+  `--info` (cyan/teal); each has a matching `-foreground`.
+- **Flat colour only.** There are no `linear-gradient`/`radial-gradient`
+  backgrounds anywhere in the theme; depth comes from surface steps, solid
+  borders (`--border`, `--border-strong`) and shadows.
+- `--radius` 0.875rem with `sm/md/lg/xl/2xl` derived from it, so radii stay
+  consistent without per-component magic numbers.
+- Dark mode only, declared with `color-scheme: dark`; there is no light palette
+  to keep in sync.
+
+Primitives in `src/components/ui/`:
+
+- `button.tsx`, `card.tsx`, `input.tsx`, `label.tsx`, `form.tsx`, `badge.tsx`,
+  `table.tsx`, `dialog.tsx`, `progress.tsx`, `skeleton.tsx`.
+- `motion.tsx` holds the shared animation vocabulary (`Reveal`, `Stagger`,
+  `StaggerItem`, `PageTransition`, `AmbientBackground`) so no page hand-rolls
+  Framer Motion variants.
+- `page.tsx` holds page composition (`PageHeader`, `PageSections`, `StatGrid`,
+  `StatCard`, `SectionCard`, `EmptyState`, `DetailRow`, `Notice`) plus
+  `IconTile`/`IconTileTone` from `card.tsx` for the coloured icon chips. Every
+  dashboard and admin screen is assembled from these, which is why the pages are
+  short and visually identical in rhythm.
+- Animations are restricted to `transform`/`opacity`, and `prefers-reduced-motion`
+  is honoured, so scroll reveals and hover lifts do not thrash layout.
+
+Consequences worth remembering:
+
+- `page.tsx` primitives are **presentational only** — they receive already
+  formatted, already role-filtered values. Do not let them fetch or format.
+  Nothing in them can render a raw target number because no target number is
+  passed in.
+- Icons are Lucide, sized with the `size-*` utilities (20–24px in UI, larger in
+  tiles) and always paired with text in buttons and navigation.
+- Adding a page means composing `PageHeader` + `PageSections` + `SectionCard`;
+  introducing new colours or new one-off shadows is a regression, not a feature.
 
 ## Key Decisions
 
@@ -199,6 +266,27 @@ Read-only page data comes from dedicated `queries.ts` modules
   `AppRouteHandlerFn` (two parameters), while the `next-auth` stub returns the
   bare one-parameter decision function, so a direct cast is not assignable under
   `strict`.
+- **Reduced motion is handled by `MotionConfig reducedMotion="user"`, never by
+  branching on `useReducedMotion()`.** The first version of `motion.tsx` did the
+  latter: on `reduce` it returned a plain `<div>` instead of a `motion.div`. Three
+  problems, none of which `tsc`, `eslint` or `next build` reported — all four
+  primitives type-checked, linted and rendered.
+  1. **Hydration mismatch.** `useReducedMotion()` is `null` during SSR and can be
+     `true` on the client's first render, so the server emitted `motion.div` and
+     the client expected `div`. `MotionConfig` only writes context, so both sides
+     now emit identical markup.
+  2. **Silently dropped props.** The fallback branch forwarded only `className`
+     and `children`; `id`, `aria-*` and `data-*` on any `Reveal`/`StaggerItem`
+     vanished for reduced-motion users. `HTMLMotionProps` made this type-clean.
+  3. **`children` needed a cast** (`children as ReactNode`) purely because the
+     fallback rendered a plain `div`; removing the branch removed the cast.
+  Also switched `staggerChildren`/`delayChildren: number` to
+  `delayChildren: stagger(step, { startDelay: delay })` — the numeric form is
+  deprecated in `motion-dom`'s types, and `stagger` is a real runtime export of
+  framer-motion 13 (verified by import, not by reading the `.d.ts`).
+  `src/components/ui/motion.test.tsx` now server-renders every primitive and
+  asserts both that children survive and that `delay`/`step`/`y` do not leak into
+  the DOM.
 
 ## Delivery Integrity
 
@@ -252,6 +340,14 @@ never mutated or deleted.
    a page that 500s at runtime; only `src/components/ui/button.test.tsx` guards
    the specific `Slot` regression that caused one. A real E2E harness is still
    missing.
+7. **The redesign is verified by build, not by eye.** Lint, typecheck, unit tests
+   and `next build` all pass, and the layout is built from responsive primitives
+   (mobile-first grids, `min-[480px]`/`xl` breakpoints, 44px touch targets,
+   desktop sidebar + mobile bottom tabs). But no page was rendered in a real
+   browser at 375 / 768 / 1440 px, no Lighthouse run was taken, and contrast
+   ratios were chosen from `oklch` lightness steps rather than measured. Visual
+   regressions, focus-order problems and animation jank would not be caught by
+   anything currently in `npm run verify`.
 
 ## Next Task
 
@@ -266,5 +362,8 @@ never mutated or deleted.
    are caught by `npm run verify` instead of by hand.
 5. Re-run `npm run verify` plus `npm run test:integration` after each of the
    above.
+6. Close gap 7: open every route at 375 / 768 / 1440 px, tab through each form
+   to confirm focus rings and order, and take a Lighthouse run on one dashboard
+   and one admin page.
 
 

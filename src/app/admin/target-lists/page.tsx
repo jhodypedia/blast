@@ -1,18 +1,30 @@
 import type { Metadata } from "next";
-import { ListChecks } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  FileSpreadsheet,
+  ListChecks,
+  Megaphone,
+  Rows3,
+  UploadCloud,
+  XCircle,
+} from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { listTargetLists } from "@/lib/target/list-service";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  EmptyState,
+  Notice,
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 import { UploadTargetListForm } from "@/components/admin/upload-target-list-form";
 import { ArchiveTargetListButton } from "@/components/admin/archive-target-list-button";
 
@@ -46,118 +58,161 @@ export default async function AdminTargetListsPage() {
     getSetting(SETTING_KEYS.maxTargetFileBytes),
   ]);
 
+  const ready = lists.filter((list) => list.status === "READY").length;
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Target lists</h1>
-        <p className="text-sm text-muted-foreground">
-          Upload phone numbers as .txt or .csv. Imports run in the background and
-          numbers are never shown to operators.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<ListChecks className="size-5" />}
+        tone="info"
+        title="Target lists"
+        description="Upload phone numbers as .txt or .csv. Imports run in the background and numbers are never shown to operators."
+        actions={
+          <>
+            <Badge variant="success">{ready} ready</Badge>
+            <Badge variant="info">{lists.length} total</Badge>
+          </>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload a list</CardTitle>
-          <CardDescription>
-            Maximum {Math.floor(maxBytes / (1024 * 1024))} MB. Local numbers use{" "}
-            {defaultCountry} as the default country.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <PageSections>
+        <SectionCard
+          title="Upload a list"
+          description={`Maximum ${Math.floor(
+            maxBytes / (1024 * 1024),
+          )} MB. Local numbers use ${defaultCountry} as the default country.`}
+          icon={<UploadCloud className="size-5" />}
+        >
           <UploadTargetListForm defaultCountryCode={defaultCountry} />
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      {lists.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <span className="rounded-full bg-muted p-3">
-              <ListChecks
-                className="size-6 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </span>
-            <p className="text-sm text-muted-foreground">
-              No target lists yet.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {lists.map((list) => (
-            <Card key={list.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate">{list.name}</CardTitle>
-                    <CardDescription className="truncate">
-                      {list.originalFileName} ·{" "}
-                      {list.createdAt.toISOString().slice(0, 10)}
-                    </CardDescription>
-                  </div>
-                  <Badge variant={STATUS_VARIANT[list.status] ?? "neutral"}>
-                    {list.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-5">
-                  <Metric label="Rows" value={list.sourceRowCount} />
-                  <Metric
-                    label="Imported"
-                    value={list.importedCount}
-                    tone="success"
-                  />
-                  <Metric label="Duplicates" value={list.duplicateCount} />
-                  <Metric
-                    label="Invalid"
-                    value={list.invalidCount}
-                    tone="danger"
-                  />
-                  <Metric label="Campaigns" value={list.campaignCount} />
-                </dl>
+        {lists.length === 0 ? (
+          <EmptyState
+            icon={<ListChecks className="size-6" />}
+            title="No target lists yet"
+            description="Upload a .txt or .csv file of phone numbers to create your first list."
+          />
+        ) : (
+          <Stagger className="space-y-4">
+            {lists.map((list) => (
+              <StaggerItem key={list.id}>
+                <Card hover>
+                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                    <div className="flex flex-wrap items-start gap-3.5">
+                      <IconTile
+                        tone={
+                          list.status === "READY"
+                            ? "success"
+                            : list.status === "FAILED"
+                              ? "danger"
+                              : "info"
+                        }
+                        className="mt-0.5"
+                      >
+                        <FileSpreadsheet className="size-5" />
+                      </IconTile>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-bold tracking-tight">
+                          {list.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {list.originalFileName} ·{" "}
+                          {list.createdAt.toISOString().slice(0, 10)}
+                        </p>
+                      </div>
+                      <Badge variant={STATUS_VARIANT[list.status] ?? "neutral"}>
+                        {list.status}
+                      </Badge>
+                    </div>
 
-                {list.errorSummary ? (
-                  <p className="rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-xs text-destructive">
-                    {list.errorSummary}
-                  </p>
-                ) : null}
+                    <dl className="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 lg:grid-cols-5">
+                      <Metric
+                        label="Rows"
+                        value={list.sourceRowCount}
+                        icon={<Rows3 className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Imported"
+                        value={list.importedCount}
+                        tone="success"
+                        icon={<CheckCircle2 className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Duplicates"
+                        value={list.duplicateCount}
+                        tone="warning"
+                        icon={<Copy className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Invalid"
+                        value={list.invalidCount}
+                        tone="danger"
+                        icon={<XCircle className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Campaigns"
+                        value={list.campaignCount}
+                        tone="info"
+                        icon={<Megaphone className="size-3.5" />}
+                      />
+                    </dl>
 
-                {list.status !== "ARCHIVED" ? (
-                  <div className="border-t border-border pt-3">
-                    <ArchiveTargetListButton targetListId={list.id} />
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+                    {list.errorSummary ? (
+                      <Notice
+                        tone="danger"
+                        icon={<AlertTriangle className="size-4" />}
+                        className="mt-4"
+                      >
+                        {list.errorSummary}
+                      </Notice>
+                    ) : null}
+
+                    {list.status !== "ARCHIVED" ? (
+                      <div className="mt-4 border-t border-border/70 pt-4">
+                        <ArchiveTargetListButton targetListId={list.id} />
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        )}
+      </PageSections>
+    </>
   );
 }
 
+/** Import-outcome counter tile. Aggregates only, never raw numbers. */
 function Metric({
   label,
   value,
   tone,
+  icon,
 }: {
   label: string;
   value: number;
-  tone?: "success" | "danger";
+  tone?: "success" | "danger" | "warning" | "info";
+  icon: React.ReactNode;
 }) {
-  const toneClass =
-    tone === "success"
-      ? "text-success"
-      : tone === "danger"
-        ? "text-destructive"
-        : "";
+  const tones = {
+    success: "border-success/25 bg-success/8 text-success",
+    danger: "border-destructive/25 bg-destructive/8 text-destructive",
+    warning: "border-warning/25 bg-warning/8 text-warning",
+    info: "border-info/25 bg-info/8 text-info",
+  } as const;
 
   return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`font-semibold ${toneClass}`}>{value}</dd>
+    <div
+      className={`rounded-lg border p-3 ${
+        tone ? tones[tone] : "border-border bg-surface/60 text-muted-foreground"
+      }`}
+    >
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </dt>
+      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
     </div>
   );
 }

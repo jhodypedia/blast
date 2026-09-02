@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import { ClipboardList } from "lucide-react";
+import {
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Gauge,
+  ListChecks,
+  Send,
+  Smartphone,
+  UserCog,
+  XCircle,
+} from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { listJobsForAdmin } from "@/lib/admin/job-queries";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import { EmptyState, PageHeader, PageSections } from "@/components/ui/page";
 import { AdminJobStopButton } from "@/components/admin/admin-job-stop-button";
 
 export const metadata: Metadata = { title: "Blast jobs" };
@@ -36,103 +43,187 @@ export default async function AdminJobsPage() {
   await requireAdmin();
   const jobs = await listJobsForAdmin({ limit: 100 });
 
+  const live = jobs.filter((job) => LIVE.includes(job.status)).length;
+  const review = jobs.reduce((sum, job) => sum + job.needsReconciliation, 0);
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Blast jobs</h1>
-        <p className="text-sm text-muted-foreground">
-          Delivery runs across all operators. Progress is derived from recipient
-          states.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Send className="size-5" />}
+        title="Blast jobs"
+        description="Delivery runs across all operators. Progress is derived from recipient states."
+        actions={
+          <>
+            {review > 0 ? (
+              <Badge variant="warning">{review} to review</Badge>
+            ) : null}
+            <Badge variant="info">{live} live</Badge>
+            <Badge variant="neutral">{jobs.length} total</Badge>
+          </>
+        }
+      />
 
-      {jobs.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <span className="rounded-full bg-muted p-3">
-              <ClipboardList
-                className="size-6 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </span>
-            <p className="text-sm text-muted-foreground">No jobs yet.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {jobs.map((job) => (
-            <Card key={job.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate">
-                      {job.campaignName}
-                    </CardTitle>
-                    <CardDescription className="truncate">
-                      {job.operatorEmail} · {job.deviceLabel} ·{" "}
-                      {job.speedSeconds}s
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {job.needsReconciliation > 0 ? (
-                      <Badge variant="warning">
-                        {job.needsReconciliation} to review
-                      </Badge>
+      <PageSections>
+        {jobs.length === 0 ? (
+          <EmptyState
+            icon={<ClipboardList className="size-6" />}
+            title="No jobs yet"
+            description="Blast jobs appear here as soon as an operator starts one."
+          />
+        ) : (
+          <Stagger className="space-y-3">
+            {jobs.map((job) => (
+              <StaggerItem key={job.id}>
+                <Card hover>
+                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                    <div className="flex flex-wrap items-start gap-3.5">
+                      <IconTile
+                        tone={
+                          job.status === "COMPLETED"
+                            ? "success"
+                            : job.status === "PAUSED"
+                              ? "warning"
+                              : job.status === "FAILED"
+                                ? "danger"
+                                : "primary"
+                        }
+                        className="mt-0.5"
+                      >
+                        <Send className="size-5" />
+                      </IconTile>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-bold tracking-tight">
+                          {job.campaignName}
+                        </p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5">
+                            <UserCog
+                              aria-hidden="true"
+                              className="size-3.5 text-info"
+                            />
+                            <span className="truncate">{job.operatorEmail}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Smartphone
+                              aria-hidden="true"
+                              className="size-3.5 text-primary"
+                            />
+                            {job.deviceLabel}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Gauge
+                              aria-hidden="true"
+                              className="size-3.5 text-warning"
+                            />
+                            {job.speedSeconds}s
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {job.needsReconciliation > 0 ? (
+                          <Badge variant="warning">
+                            {job.needsReconciliation} to review
+                          </Badge>
+                        ) : null}
+                        <Badge variant={STATUS_VARIANT[job.status] ?? "neutral"}>
+                          {job.status}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="text-primary">{job.percent}%</span>
+                      </div>
+                      <Progress
+                        value={job.percent}
+                        tone={
+                          job.status === "PAUSED"
+                            ? "warning"
+                            : job.status === "FAILED"
+                              ? "danger"
+                              : job.status === "COMPLETED"
+                                ? "success"
+                                : "primary"
+                        }
+                        aria-label={`${job.campaignName} progress`}
+                      />
+                    </div>
+
+                    <dl className="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+                      <Metric
+                        label="Sent"
+                        value={String(job.sent)}
+                        tone="success"
+                        icon={<CheckCircle2 className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Failed"
+                        value={String(job.failed)}
+                        tone="danger"
+                        icon={<XCircle className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Allocated"
+                        value={String(job.quotaTotal)}
+                        tone="info"
+                        icon={<ListChecks className="size-3.5" />}
+                      />
+                      <Metric
+                        label="Started"
+                        value={job.createdAt.toISOString().slice(0, 16)}
+                        icon={<CalendarClock className="size-3.5" />}
+                      />
+                    </dl>
+
+                    {LIVE.includes(job.status) ? (
+                      <div className="mt-4 border-t border-border/70 pt-4">
+                        <AdminJobStopButton blastJobId={job.id} />
+                      </div>
                     ) : null}
-                    <Badge variant={STATUS_VARIANT[job.status] ?? "neutral"}>
-                      {job.status}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div
-                  role="progressbar"
-                  aria-valuenow={job.percent}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`${job.campaignName} progress`}
-                  className="h-2 w-full overflow-hidden rounded-full bg-muted"
-                >
-                  <div
-                    className="h-full rounded-full bg-success"
-                    style={{ width: `${job.percent}%` }}
-                  />
-                </div>
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        )}
+      </PageSections>
+    </>
+  );
+}
 
-                <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-                  <div>
-                    <dt className="text-muted-foreground">Sent</dt>
-                    <dd className="font-semibold text-success">{job.sent}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Failed</dt>
-                    <dd className="font-semibold text-destructive">
-                      {job.failed}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Allocated</dt>
-                    <dd className="font-semibold">{job.quotaTotal}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Started</dt>
-                    <dd className="font-medium">
-                      {job.createdAt.toISOString().slice(0, 16)}
-                    </dd>
-                  </div>
-                </dl>
+/** Compact job counter tile. */
+function Metric({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "danger" | "info";
+  icon: React.ReactNode;
+}) {
+  const tones = {
+    success: "border-success/25 bg-success/8 text-success",
+    danger: "border-destructive/25 bg-destructive/8 text-destructive",
+    info: "border-info/25 bg-info/8 text-info",
+  } as const;
 
-                {LIVE.includes(job.status) ? (
-                  <div className="border-t border-border pt-3">
-                    <AdminJobStopButton blastJobId={job.id} />
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+  return (
+    <div
+      className={`rounded-lg border p-3 ${
+        tone ? tones[tone] : "border-border bg-surface/60 text-muted-foreground"
+      }`}
+    >
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </dt>
+      <dd className="mt-1 truncate text-sm font-bold text-foreground">
+        {value}
+      </dd>
     </div>
   );
 }

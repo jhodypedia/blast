@@ -1,19 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Megaphone, Send, Users, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  ClipboardList,
+  LayoutDashboard,
+  Megaphone,
+  Send,
+  ShieldAlert,
+  Users,
+  Wallet,
+} from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
 import { formatMoney, toMoneyString } from "@/lib/money";
+import { Card, CardContent, IconTile, type IconTileTone } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 
 export const metadata: Metadata = { title: "Admin overview" };
 
@@ -46,102 +56,130 @@ export default async function AdminOverviewPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-        <p className="text-sm text-muted-foreground">
-          Platform status across campaigns, delivery and payouts.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<LayoutDashboard className="size-5" />}
+        title="Overview"
+        description="Platform status across campaigns, delivery and payouts."
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          href="/admin/campaigns"
-          label="Active campaigns"
-          value={String(activeCampaigns)}
-          icon={<Megaphone className="size-5 text-info" aria-hidden="true" />}
-        />
-        <StatCard
-          href="/admin/jobs"
-          label="Live blast jobs"
-          value={String(liveJobs)}
-          icon={<Send className="size-5 text-primary" aria-hidden="true" />}
-        />
-        <StatCard
-          href="/admin/users"
-          label="Operators"
-          value={String(operators)}
-          icon={
-            <Users className="size-5 text-muted-foreground" aria-hidden="true" />
-          }
-        />
-        <StatCard
-          href="/admin/withdrawals"
-          label="Withdrawals pending"
-          value={String(pendingWithdrawals)}
-          hint={formatMoney(
-            toMoneyString(pendingAmount._sum.netAmount?.toString() ?? "0"),
-            currency,
-          )}
-          icon={<Wallet className="size-5 text-success" aria-hidden="true" />}
-        />
-      </div>
+      <PageSections>
+        <Stagger className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 xl:grid-cols-4">
+          <LinkStat
+            href="/admin/campaigns"
+            label="Active campaigns"
+            value={String(activeCampaigns)}
+            hint="Currently sendable"
+            tone="info"
+            icon={<Megaphone className="size-5" />}
+          />
+          <LinkStat
+            href="/admin/jobs"
+            label="Live blast jobs"
+            value={String(liveJobs)}
+            hint="Queued, running or paused"
+            tone="primary"
+            icon={<Send className="size-5" />}
+          />
+          <LinkStat
+            href="/admin/users"
+            label="Operators"
+            value={String(operators)}
+            hint="Active accounts"
+            tone="neutral"
+            icon={<Users className="size-5" />}
+          />
+          <LinkStat
+            href="/admin/withdrawals"
+            label="Withdrawals pending"
+            value={String(pendingWithdrawals)}
+            hint={formatMoney(
+              toMoneyString(pendingAmount._sum.netAmount?.toString() ?? "0"),
+              currency,
+            )}
+            tone="success"
+            icon={<Wallet className="size-5" />}
+          />
+        </Stagger>
 
-      {reconciliation > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Reconciliation required</CardTitle>
-            <CardDescription>
-              {reconciliation} recipient{reconciliation === 1 ? "" : "s"} had an
-              ambiguous delivery result. These are never retried automatically and
-              need a manual decision.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href="/admin/jobs"
-              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Review affected jobs
-            </Link>
-          </CardContent>
-        </Card>
-      ) : null}
-    </div>
+        {reconciliation > 0 ? (
+          <SectionCard
+            title="Reconciliation required"
+            description={`${reconciliation} recipient${
+              reconciliation === 1 ? "" : "s"
+            } had an ambiguous delivery result. These are never retried automatically and need a manual decision.`}
+            icon={<ShieldAlert className="size-5" />}
+            tone="warning"
+            actions={
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/jobs">
+                  <ClipboardList aria-hidden="true" />
+                  Review jobs
+                </Link>
+              </Button>
+            }
+          >
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Ambiguous sends stay in{" "}
+              <span className="font-semibold text-warning">
+                RECONCILIATION_REQUIRED
+              </span>{" "}
+              until an administrator confirms or discards them. No earnings are
+              credited and no message is resent while a recipient is in this
+              state.
+            </p>
+          </SectionCard>
+        ) : null}
+      </PageSections>
+    </>
   );
 }
 
-function StatCard({
+/** Metric tile that navigates to the matching admin section. */
+function LinkStat({
   href,
   label,
   value,
   hint,
   icon,
+  tone,
 }: {
   href: string;
   label: string;
   value: string;
   hint?: string;
   icon: React.ReactNode;
+  tone: IconTileTone;
 }) {
   return (
-    <Link href={href} className="block">
-      <Card className="transition-colors hover:bg-accent/40">
-        <CardContent className="flex items-start justify-between gap-3 p-5">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {label}
-            </p>
-            <p className="mt-1 truncate text-xl font-semibold">{value}</p>
-            {hint ? (
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {hint}
+    <StaggerItem>
+      <Link
+        href={href}
+        className="group block h-full rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <Card hover className="h-full">
+          <CardContent className="flex items-start justify-between gap-3 p-5 pt-5 sm:p-6 sm:pt-6">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {label}
               </p>
-            ) : null}
-          </div>
-          <span className="shrink-0 rounded-lg bg-muted p-2">{icon}</span>
-        </CardContent>
-      </Card>
-    </Link>
+              <p className="mt-2 truncate text-2xl font-bold tracking-tight sm:text-[1.75rem]">
+                {value}
+              </p>
+              {hint ? (
+                <p className="mt-1.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                  {hint}
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-0.5"
+                  />
+                </p>
+              ) : null}
+            </div>
+            <IconTile tone={tone}>{icon}</IconTile>
+          </CardContent>
+        </Card>
+      </Link>
+    </StaggerItem>
   );
 }

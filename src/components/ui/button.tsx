@@ -13,29 +13,44 @@ import { cn } from "@/lib/utils";
  * mobile (RULES.md §18). `loading` renders a spinner and disables interaction so
  * async actions always have a visible pending state.
  *
+ * Motion: hover scales up slightly and gains an emerald glow, press scales down.
+ * Only `transform`/`box-shadow`/colour animate, so no layout is recalculated.
+ * Hover transforms are gated behind `hover: hover` via `@media` in Tailwind's
+ * `hover:` variant plus the reduced-motion reset in globals.css.
+ *
  * The spinner is a sibling of `children`, so `asChild` must mark the slot target
  * with `Slottable`; otherwise Radix `Slot` sees more than one child and throws.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-[transform,box-shadow,background-color,color] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold",
+    "transition-[transform,box-shadow,background-color,border-color,color] duration-200 ease-out",
+    "hover:-translate-y-px active:translate-y-0 active:scale-[0.97]",
+    "disabled:pointer-events-none disabled:opacity-55 disabled:shadow-none",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+    "[&_svg]:transition-transform [&_svg]:duration-200 hover:[&_svg]:scale-110",
+  ],
   {
     variants: {
       variant: {
         default:
-          "gradient-primary text-primary-foreground shadow-sm hover:shadow-md",
+          "bg-primary text-primary-foreground shadow-[var(--shadow-glow-sm)] hover:bg-primary/92 hover:shadow-[var(--shadow-glow)]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "bg-secondary text-secondary-foreground border border-border hover:border-border-strong hover:bg-surface-strong",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+          "border border-border-strong bg-transparent text-foreground hover:border-primary/60 hover:bg-primary/10 hover:text-primary",
+        ghost:
+          "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        success: "bg-success text-success-foreground shadow-sm hover:bg-success/90",
-        info: "bg-info text-info-foreground shadow-sm hover:bg-info/90",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-destructive text-destructive-foreground shadow-panel hover:bg-destructive/90",
+        success:
+          "bg-success text-success-foreground shadow-panel hover:bg-success/90",
+        info: "bg-info text-info-foreground shadow-panel hover:bg-info/90",
+        link: "text-primary underline-offset-4 hover:underline hover:translate-y-0",
       },
       size: {
-        sm: "h-9 min-h-9 px-3 text-xs",
+        sm: "h-9 min-h-9 gap-1.5 px-3.5 text-xs",
         default: "h-11 min-h-11 px-5",
         lg: "h-12 min-h-12 px-7 text-base",
         icon: "size-11 min-h-11 min-w-11",

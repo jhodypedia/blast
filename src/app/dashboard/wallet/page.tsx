@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
-import { Wallet } from "lucide-react";
+import {
+  ArrowDownToLine,
+  BanknoteArrowUp,
+  Coins,
+  History,
+  Landmark,
+  Lock,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { getWalletView } from "@/lib/wallet/service";
@@ -9,14 +18,16 @@ import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { PAYOUT_PROVIDERS } from "@/lib/validation/wallet";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  EmptyState,
+  PageHeader,
+  PageSections,
+  SectionCard,
+  StatCard,
+  StatGrid,
+} from "@/components/ui/page";
 import { WalletForm } from "@/components/wallet/wallet-form";
 import { WithdrawalForm } from "@/components/wallet/withdrawal-form";
 import { CancelWithdrawalButton } from "@/components/wallet/cancel-withdrawal-button";
@@ -34,32 +45,6 @@ const STATUS_VARIANT: Record<
   REJECTED: "danger",
   CANCELLED: "neutral",
 };
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-3 p-5">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-xl font-semibold">{value}</p>
-        </div>
-        <span className="shrink-0 rounded-lg bg-muted p-2">
-          <Wallet className="size-5 text-success" aria-hidden="true" />
-        </span>
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border p-6 text-center">
-      <p className="text-sm text-muted-foreground">{message}</p>
-    </div>
-  );
-}
 
 /**
  * Earnings, wallet and withdrawals for the signed-in operator.
@@ -99,53 +84,64 @@ export default async function WalletPage() {
           : undefined;
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Earnings</h1>
-        <p className="text-sm text-muted-foreground">
-          Earnings are credited only after a delivery is confirmed as sent.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<Wallet className="size-5" />}
+        tone="success"
+        title="Earnings"
+        description="Earnings are credited only after a delivery is confirmed as sent."
+      />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          label="Available"
-          value={formatMoney(balance.available, currency)}
-        />
-        <SummaryCard
-          label="On hold"
-          value={formatMoney(balance.held, currency)}
-        />
-        <SummaryCard
-          label="Lifetime total"
-          value={formatMoney(balance.total, currency)}
-        />
-      </div>
+      <PageSections>
+        <StatGrid className="xl:grid-cols-3">
+          <StatCard
+            label="Available"
+            tone="success"
+            value={formatMoney(balance.available, currency)}
+            hint="Ready to withdraw"
+            icon={<Coins className="size-5" />}
+          />
+          <StatCard
+            label="On hold"
+            tone="warning"
+            value={formatMoney(balance.held, currency)}
+            hint="Reserved for open withdrawals"
+            icon={<Lock className="size-5" />}
+          />
+          <StatCard
+            label="Lifetime total"
+            tone="info"
+            value={formatMoney(balance.total, currency)}
+            hint="All confirmed credits"
+            icon={<TrendingUp className="size-5" />}
+          />
+        </StatGrid>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Payout wallet</CardTitle>
-            <CardDescription>
-              {wallet
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SectionCard
+            title="Payout wallet"
+            description={
+              wallet
                 ? `${wallet.providerName} · ${wallet.accountNumberMasked}`
-                : "No wallet set yet."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {wallet ? (
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant={wallet.status === "ACTIVE" ? "success" : "warning"}
-                >
-                  {wallet.status}
-                </Badge>
-                {wallet.hasPendingChange ? (
-                  <Badge variant="info">Change pending review</Badge>
-                ) : null}
-              </div>
-            ) : null}
-
+                : "No wallet set yet."
+            }
+            icon={<Landmark className="size-5" />}
+            tone="info"
+            actions={
+              wallet ? (
+                <>
+                  <Badge
+                    variant={wallet.status === "ACTIVE" ? "success" : "warning"}
+                  >
+                    {wallet.status}
+                  </Badge>
+                  {wallet.hasPendingChange ? (
+                    <Badge variant="info">Change pending</Badge>
+                  ) : null}
+                </>
+              ) : undefined
+            }
+          >
             <WalletForm
               providers={PAYOUT_PROVIDERS.map((provider) => ({
                 code: provider.code,
@@ -155,17 +151,14 @@ export default async function WalletPage() {
               disabled={Boolean(wallet?.hasPendingChange)}
               disabledReason="A change request is already awaiting review."
             />
-          </CardContent>
-        </Card>
+          </SectionCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Request a withdrawal</CardTitle>
-            <CardDescription>
-              Funds are held as soon as the request is created.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <SectionCard
+            title="Request a withdrawal"
+            description="Funds are held as soon as the request is created."
+            icon={<BanknoteArrowUp className="size-5" />}
+            tone="success"
+          >
             <WithdrawalForm
               availableLabel={formatMoney(balance.available, currency)}
               minAmountLabel={formatMoney(minAmount, currency)}
@@ -173,90 +166,97 @@ export default async function WalletPage() {
               disabled={Boolean(withdrawalBlockedReason)}
               disabledReason={withdrawalBlockedReason}
             />
-          </CardContent>
-        </Card>
-      </div>
+          </SectionCard>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Withdrawal history</CardTitle>
-          <CardDescription>
-            Account numbers are always shown masked.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <SectionCard
+          title="Withdrawal history"
+          description="Account numbers are always shown masked."
+          icon={<History className="size-5" />}
+          tone="warning"
+        >
           {withdrawals.length === 0 ? (
-            <EmptyState message="No withdrawal requests yet." />
+            <EmptyState
+              icon={<ArrowDownToLine className="size-6" />}
+              title="No withdrawal requests yet"
+              description="Once you request a payout it will be listed here with its review status."
+            />
           ) : (
-            withdrawals.map((row) => (
-              <div
-                key={row.id}
-                className="flex flex-col gap-2 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {formatMoney(row.netAmount, row.currency)}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      net of {formatMoney(row.fee, row.currency)} fee
-                    </span>
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {row.providerName} · {row.accountMasked} ·{" "}
-                    {row.createdAt.toISOString().slice(0, 10)}
-                  </p>
-                  {row.rejectionReason ? (
-                    <p className="mt-1 text-xs text-destructive">
-                      {row.rejectionReason}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={STATUS_VARIANT[row.status] ?? "neutral"}>
-                    {row.status}
-                  </Badge>
-                  {row.cancellable ? (
-                    <CancelWithdrawalButton withdrawalId={row.id} />
-                  ) : null}
-                </div>
-              </div>
-            ))
+            <Stagger className="space-y-3">
+              {withdrawals.map((row) => (
+                <StaggerItem key={row.id}>
+                  <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/60 p-4 transition-colors hover:border-primary/35 hover:bg-surface sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">
+                        {formatMoney(row.netAmount, row.currency)}{" "}
+                        <span className="text-xs font-normal text-muted-foreground">
+                          net of {formatMoney(row.fee, row.currency)} fee
+                        </span>
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {row.providerName} · {row.accountMasked} ·{" "}
+                        {row.createdAt.toISOString().slice(0, 10)}
+                      </p>
+                      {row.rejectionReason ? (
+                        <p className="mt-1.5 text-xs font-medium text-destructive">
+                          {row.rejectionReason}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant={STATUS_VARIANT[row.status] ?? "neutral"}>
+                        {row.status}
+                      </Badge>
+                      {row.cancellable ? (
+                        <CancelWithdrawalButton withdrawalId={row.id} />
+                      ) : null}
+                    </div>
+                  </div>
+                </StaggerItem>
+              ))}
+            </Stagger>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent earnings</CardTitle>
-          <CardDescription>
-            Each row is one confirmed delivery credit.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        <SectionCard
+          title="Recent earnings"
+          description="Each row is one confirmed delivery credit."
+          icon={<Coins className="size-5" />}
+          tone="success"
+        >
           {earnings.length === 0 ? (
-            <EmptyState message="No earnings yet. Run a blast job to start earning." />
+            <EmptyState
+              icon={<Coins className="size-6" />}
+              title="No earnings yet"
+              description="Run a blast job on an assigned campaign to start earning."
+            />
           ) : (
-            earnings.map((row) => (
-              <div
-                key={row.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {row.campaignName ?? "Campaign"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {row.createdAt.toISOString().slice(0, 16).replace("T", " ")}{" "}
-                    UTC
-                  </p>
-                </div>
-                <span className="text-sm font-semibold text-success">
-                  +{formatMoney(row.amount, row.currency)}
-                </span>
-              </div>
-            ))
+            <Stagger className="space-y-2">
+              {earnings.map((row) => (
+                <StaggerItem key={row.id}>
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface/60 px-4 py-3 transition-colors hover:border-success/35 hover:bg-surface">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {row.campaignName ?? "Campaign"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {row.createdAt
+                          .toISOString()
+                          .slice(0, 16)
+                          .replace("T", " ")}{" "}
+                        UTC
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-success">
+                      +{formatMoney(row.amount, row.currency)}
+                    </span>
+                  </div>
+                </StaggerItem>
+              ))}
+            </Stagger>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }

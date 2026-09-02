@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowLeft, ListChecks, Plus, TriangleAlert } from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
+import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  EmptyState,
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 import { CampaignForm } from "@/components/admin/campaign-form";
 
 export const metadata: Metadata = { title: "New campaign" };
@@ -41,27 +43,44 @@ export default async function NewCampaignPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">New campaign</h1>
-        <p className="text-sm text-muted-foreground">
-          Campaigns are created as drafts. Activate one when it is ready to run.
-        </p>
-      </header>
+    <>
+      <div className="mb-5">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/admin/campaigns">
+            <ArrowLeft aria-hidden="true" />
+            All campaigns
+          </Link>
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Campaign details</CardTitle>
-          <CardDescription>
-            Only administrators can create or change a campaign. Operators can
-            only start jobs against it.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <PageHeader
+        icon={<Plus className="size-5" />}
+        title="New campaign"
+        description="Campaigns are created as drafts. Activate one when it is ready to run."
+      />
+
+      <PageSections>
+        <SectionCard
+          title="Campaign details"
+          description="Only administrators can create or change a campaign. Operators can only start jobs against it."
+          icon={<ListChecks className="size-5" />}
+          tone="info"
+        >
           {lists.length === 0 ? (
-            <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
-              Upload and import a target list before creating a campaign.
-            </p>
+            <EmptyState
+              icon={<TriangleAlert className="size-6" />}
+              tone="warning"
+              title="No imported target list"
+              description="Upload and import a target list before creating a campaign."
+              action={
+                <Button asChild>
+                  <Link href="/admin/target-lists">
+                    <ListChecks aria-hidden="true" />
+                    Go to target lists
+                  </Link>
+                </Button>
+              }
+            />
           ) : (
             <CampaignForm
               targetLists={lists.map((list) => ({
@@ -98,8 +117,8 @@ export default async function NewCampaignPage() {
               }}
             />
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }

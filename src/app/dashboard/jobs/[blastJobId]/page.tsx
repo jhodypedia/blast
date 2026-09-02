@@ -1,21 +1,40 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  Ban,
+  CheckCircle2,
+  Clock,
+  Coins,
+  Gauge,
+  ListChecks,
+  Loader2,
+  Send,
+  SkipForward,
+  Smartphone,
+  Sigma,
+  XCircle,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { getUserJobDetail } from "@/lib/blast/queries";
 import { isAppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
+import {
+  EmptyState,
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 import { JobControls } from "@/components/blast/job-controls";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Blast job" };
 
@@ -46,136 +65,210 @@ export default async function JobDetailPage({
   const { job, events } = detail;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href="/dashboard/jobs"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
+    <>
+      <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
+        <Link href="/dashboard/jobs">
+          <ArrowLeft aria-hidden="true" />
           All jobs
         </Link>
-      </div>
+      </Button>
 
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">
-            {job.campaignName}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {job.deviceLabel} · {job.speedSeconds}s ·{" "}
-            {formatMoney(job.payoutPerSend, job.currency)} per confirmed send
-          </p>
-        </div>
-        <Badge variant={job.status === "PAUSED" ? "warning" : "info"}>
-          {job.status}
-        </Badge>
-      </header>
+      <PageHeader
+        icon={<Send className="size-5" />}
+        tone={
+          job.status === "COMPLETED"
+            ? "success"
+            : job.status === "PAUSED"
+              ? "warning"
+              : "primary"
+        }
+        title={job.campaignName}
+        description={`${job.deviceLabel} · ${job.speedSeconds}s · ${formatMoney(
+          job.payoutPerSend,
+          job.currency,
+        )} per confirmed send`}
+        actions={
+          <Badge variant={job.status === "PAUSED" ? "warning" : "info"}>
+            {job.status}
+          </Badge>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Progress</CardTitle>
-          <CardDescription>
-            {job.percent}% of {job.quotaTotal} allocated recipients resolved.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div
-            role="progressbar"
-            aria-valuenow={job.percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Job progress"
-            className="h-2 w-full overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className="h-full rounded-full bg-success"
-              style={{ width: `${job.percent}%` }}
-            />
+      <PageSections>
+        <SectionCard
+          title="Progress"
+          description={`${job.percent}% of ${job.quotaTotal} allocated recipients resolved.`}
+          icon={<Activity className="size-5" />}
+        >
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <Smartphone aria-hidden="true" className="size-3.5 text-primary" />
+              {job.deviceLabel}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Gauge aria-hidden="true" className="size-3.5 text-info" />
+              {job.speedSeconds}s interval
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Coins aria-hidden="true" className="size-3.5 text-success" />
+              {formatMoney(job.payoutPerSend, job.currency)} per send
+            </span>
+            <span className="ml-auto text-sm font-bold text-primary">
+              {job.percent}%
+            </span>
           </div>
 
-          <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <Stat label="Sent" value={job.progress.sent} tone="success" />
-            <Stat label="Pending" value={job.progress.pending} />
-            <Stat label="In flight" value={job.progress.inFlight} />
-            <Stat label="Failed" value={job.progress.failed} tone="danger" />
-            <Stat label="Cancelled" value={job.progress.cancelled} />
-            <Stat label="Skipped" value={job.progress.skipped} />
+          <Progress
+            value={job.percent}
+            tone={
+              job.status === "PAUSED"
+                ? "warning"
+                : job.status === "FAILED"
+                  ? "danger"
+                  : job.status === "COMPLETED"
+                    ? "success"
+                    : "primary"
+            }
+            aria-label="Job progress"
+          />
+
+          <dl className="mt-5 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+            <Stat
+              label="Sent"
+              value={job.progress.sent}
+              tone="success"
+              icon={<CheckCircle2 className="size-3.5" />}
+            />
+            <Stat
+              label="Pending"
+              value={job.progress.pending}
+              tone="neutral"
+              icon={<Clock className="size-3.5" />}
+            />
+            <Stat
+              label="In flight"
+              value={job.progress.inFlight}
+              tone="info"
+              icon={<Loader2 className="size-3.5" />}
+            />
+            <Stat
+              label="Failed"
+              value={job.progress.failed}
+              tone="danger"
+              icon={<XCircle className="size-3.5" />}
+            />
+            <Stat
+              label="Cancelled"
+              value={job.progress.cancelled}
+              tone="neutral"
+              icon={<Ban className="size-3.5" />}
+            />
+            <Stat
+              label="Skipped"
+              value={job.progress.skipped}
+              tone="neutral"
+              icon={<SkipForward className="size-3.5" />}
+            />
             <Stat
               label="Needs review"
               value={job.progress.needsReconciliation}
               tone="warning"
+              icon={<AlertTriangle className="size-3.5" />}
             />
-            <Stat label="Total" value={job.progress.total} />
+            <Stat
+              label="Total"
+              value={job.progress.total}
+              tone="info"
+              icon={<Sigma className="size-3.5" />}
+            />
           </dl>
 
-          <JobControls
-            blastJobId={job.id}
-            status={job.status}
-            allowUserPause={job.allowUserPause}
-          />
-        </CardContent>
-      </Card>
+          <div className="mt-5 border-t border-border/70 pt-5">
+            <JobControls
+              blastJobId={job.id}
+              status={job.status}
+              allowUserPause={job.allowUserPause}
+            />
+          </div>
+        </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent delivery events</CardTitle>
-          <CardDescription>
-            Recipients are shown by reference only.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        <SectionCard
+          title="Recent delivery events"
+          description="Recipients are shown by reference only."
+          icon={<ListChecks className="size-5" />}
+          tone="info"
+        >
           {events.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                No delivery events recorded yet.
-              </p>
-            </div>
+            <EmptyState
+              icon={<ListChecks className="size-6" />}
+              title="No delivery events yet"
+              description="Events appear as the worker resolves each recipient."
+            />
           ) : (
-            events.map((event, index) => (
-              <div
-                key={`${event.recipientRef}-${index}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-xs"
-              >
-                <span className="truncate font-mono text-muted-foreground">
-                  {event.recipientRef.slice(0, 12)}…
-                </span>
-                <span className="font-medium">{event.event}</span>
-                <span className="text-muted-foreground">{event.status}</span>
-                <span className="text-muted-foreground">
-                  {event.createdAt.toISOString().slice(11, 19)}
-                </span>
-              </div>
-            ))
+            <Stagger className="space-y-2">
+              {events.map((event, index) => (
+                <StaggerItem key={`${event.recipientRef}-${index}`}>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface/60 px-3.5 py-2.5 text-xs transition-colors hover:border-primary/30 hover:bg-surface">
+                    <span className="truncate font-mono text-muted-foreground">
+                      {event.recipientRef.slice(0, 12)}…
+                    </span>
+                    <span className="font-semibold text-foreground">
+                      {event.event}
+                    </span>
+                    <Badge
+                      variant={
+                        event.status === "SENT"
+                          ? "success"
+                          : event.status === "FAILED"
+                            ? "danger"
+                            : event.status === "RECONCILIATION_REQUIRED"
+                              ? "warning"
+                              : "neutral"
+                      }
+                    >
+                      {event.status}
+                    </Badge>
+                    <span className="ml-auto font-mono text-muted-foreground">
+                      {event.createdAt.toISOString().slice(11, 19)} UTC
+                    </span>
+                  </div>
+                </StaggerItem>
+              ))}
+            </Stagger>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }
 
+/** Compact recipient-state counter tile. */
 function Stat({
   label,
   value,
   tone,
+  icon,
 }: {
   label: string;
   value: number;
-  tone?: "success" | "danger" | "warning";
+  tone: "success" | "danger" | "warning" | "info" | "neutral";
+  icon: React.ReactNode;
 }) {
-  const toneClass =
-    tone === "success"
-      ? "text-success"
-      : tone === "danger"
-        ? "text-destructive"
-        : tone === "warning"
-          ? "text-warning-foreground"
-          : "";
+  const tones = {
+    success: "border-success/25 bg-success/8 text-success",
+    danger: "border-destructive/25 bg-destructive/8 text-destructive",
+    warning: "border-warning/25 bg-warning/8 text-warning",
+    info: "border-info/25 bg-info/8 text-info",
+    neutral: "border-border bg-surface/60 text-muted-foreground",
+  } as const;
 
   return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`font-semibold ${toneClass}`}>{value}</dd>
+    <div className={cn("rounded-lg border p-3", tones[tone])}>
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </dt>
+      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
     </div>
   );
 }

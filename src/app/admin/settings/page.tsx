@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
+import { Info, SlidersHorizontal } from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Notice,
+  PageHeader,
+  PageSections,
+  SectionCard,
+} from "@/components/ui/page";
 import { SettingRow } from "@/components/admin/setting-row";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -114,37 +114,43 @@ export default async function AdminSettingsPage() {
   const values = await getSettings(EDITABLE.map((entry) => entry.key));
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Every change is validated against its schema and written to the audit
-          log.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        icon={<SlidersHorizontal className="size-5" />}
+        title="Settings"
+        description="Every change is validated against its schema and written to the audit log."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Platform configuration</CardTitle>
-          <CardDescription>
-            Values use JSON syntax. Strings need quotes; numbers and booleans do
-            not.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {EDITABLE.map((entry) => (
-            <SettingRow
-              key={entry.key}
-              settingKey={entry.key}
-              label={entry.label}
-              help={entry.help}
-              value={JSON.stringify(
-                values[entry.key as keyof typeof values],
-              )}
-            />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+      <PageSections>
+        <SectionCard
+          title="Platform configuration"
+          description="Values use JSON syntax. Strings need quotes; numbers and booleans do not."
+          icon={<SlidersHorizontal className="size-5" />}
+        >
+          <Notice
+            tone="info"
+            icon={<Info className="size-4" />}
+            className="mb-5"
+          >
+            An invalid value is rejected by the server and the stored setting is
+            left untouched.
+          </Notice>
+
+          <div className="space-y-3">
+            {EDITABLE.map((entry) => (
+              <SettingRow
+                key={entry.key}
+                settingKey={entry.key}
+                label={entry.label}
+                help={entry.help}
+                value={JSON.stringify(
+                  values[entry.key as keyof typeof values],
+                )}
+              />
+            ))}
+          </div>
+        </SectionCard>
+      </PageSections>
+    </>
   );
 }
