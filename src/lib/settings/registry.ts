@@ -31,6 +31,10 @@ export const settingSchemas = {
     .min(1)
     .max(MAX_DEVICES_PER_USER_LIMIT),
   [SETTING_KEYS.pairCodeEnabled]: z.boolean(),
+  [SETTING_KEYS.customPairingCode]: z.union([
+    z.literal(""),
+    z.string().regex(/^[A-Za-z0-9]{8}$/),
+  ]),
   [SETTING_KEYS.qrEnabled]: z.boolean(),
   [SETTING_KEYS.deviceInactivityDays]: z.number().int().min(1).max(365),
   [SETTING_KEYS.defaultCountryCode]: countryCodeSchema,
@@ -71,6 +75,7 @@ export const settingDefaults: {
 } = {
   [SETTING_KEYS.maxDevicesPerUser]: DEFAULT_MAX_DEVICES_PER_USER,
   [SETTING_KEYS.pairCodeEnabled]: true,
+  [SETTING_KEYS.customPairingCode]: "",
   [SETTING_KEYS.qrEnabled]: true,
   [SETTING_KEYS.deviceInactivityDays]: 30,
   [SETTING_KEYS.defaultCountryCode]: DEFAULT_COUNTRY_CODE,

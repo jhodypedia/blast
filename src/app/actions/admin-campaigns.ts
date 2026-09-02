@@ -17,6 +17,7 @@ import {
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { isAppError, toAppError } from "@/lib/errors";
 import { logger } from "@/lib/observability/logger";
+import { saveCampaignMediaUpload } from "@/lib/storage/private-storage";
 
 /**
  * ADMIN campaign actions.
@@ -103,6 +104,13 @@ function campaignFormPayload(formData: FormData) {
   };
 }
 
+async function withCampaignMedia(formData: FormData, input: Record<string, unknown>) {
+  const mediaFile = formData.get("mediaFile");
+  if (!(mediaFile instanceof File) || mediaFile.size === 0) return input;
+  const media = await saveCampaignMediaUpload({ file: mediaFile });
+  return { ...input, mediaKey: media.storageKey, mediaMime: media.mimeType };
+}
+
 export async function createCampaignAction(
   _previous: AdminActionState,
   formData: FormData,
@@ -111,7 +119,9 @@ export async function createCampaignAction(
     const actor = await requireAdmin();
     await enforceRateLimit(RATE_LIMITS.adminMutation, actor.id);
 
-    const parsed = createCampaignSchema.safeParse(campaignFormPayload(formData));
+    const parsed = createCampaignSchema.safeParse(
+      await withCampaignMedia(formData, campaignFormPayload(formData)),
+    );
 
     if (!parsed.success) {
       return {
@@ -151,7 +161,9 @@ export async function updateCampaignAction(
       return { status: "error", message: "That campaign could not be found." };
     }
 
-    const parsed = updateCampaignSchema.safeParse(campaignFormPayload(formData));
+    const parsed = updateCampaignSchema.safeParse(
+      await withCampaignMedia(formData, campaignFormPayload(formData)),
+    );
 
     if (!parsed.success) {
       return {

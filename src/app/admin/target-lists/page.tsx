@@ -43,6 +43,16 @@ const STATUS_VARIANT: Record<
   ARCHIVED: "neutral",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  UPLOADING: "Mengunggah",
+  VALIDATING: "Memvalidasi",
+  PARSING: "Membaca file",
+  IMPORTING: "Mengimpor",
+  READY: "Siap",
+  FAILED: "Gagal",
+  ARCHIVED: "Diarsipkan",
+};
+
 /**
  * Target list management. ADMIN only.
  *
@@ -65,11 +75,11 @@ export default async function AdminTargetListsPage() {
       <PageHeader
         icon={<ListChecks className="size-5" />}
         tone="info"
-        title="Target lists"
-        description="Upload phone numbers as .txt or .csv. Imports run in the background and numbers are never shown to operators."
+        title="Daftar nomor"
+        description="Unggah file .txt atau .csv berisi nomor saja. Proses berjalan di background dan nomor tidak pernah ditampilkan ke operator."
         actions={
           <>
-            <Badge variant="success">{ready} ready</Badge>
+            <Badge variant="success">{ready} siap</Badge>
             <Badge variant="info">{lists.length} total</Badge>
           </>
         }
@@ -77,8 +87,8 @@ export default async function AdminTargetListsPage() {
 
       <PageSections>
         <SectionCard
-          title="Upload a list"
-          description={`Maximum ${Math.floor(
+          title="Unggah daftar nomor"
+          description={`Maksimal ${Math.floor(
             maxBytes / (1024 * 1024),
           )} MB. Local numbers use ${defaultCountry} as the default country.`}
           icon={<UploadCloud className="size-5" />}
@@ -89,8 +99,8 @@ export default async function AdminTargetListsPage() {
         {lists.length === 0 ? (
           <EmptyState
             icon={<ListChecks className="size-6" />}
-            title="No target lists yet"
-            description="Upload a .txt or .csv file of phone numbers to create your first list."
+            title="Belum ada daftar nomor"
+              description="Unggah file .txt atau .csv yang hanya berisi nomor untuk membuat daftar pertama."
           />
         ) : (
           <Stagger className="space-y-4">
@@ -121,36 +131,36 @@ export default async function AdminTargetListsPage() {
                         </p>
                       </div>
                       <Badge variant={STATUS_VARIANT[list.status] ?? "neutral"}>
-                        {list.status}
+                        {STATUS_LABEL[list.status] ?? list.status}
                       </Badge>
                     </div>
 
                     <dl className="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 lg:grid-cols-5">
                       <Metric
-                        label="Rows"
+                        label="Baris"
                         value={list.sourceRowCount}
                         icon={<Rows3 className="size-3.5" />}
                       />
                       <Metric
-                        label="Imported"
+                        label="Masuk"
                         value={list.importedCount}
                         tone="success"
                         icon={<CheckCircle2 className="size-3.5" />}
                       />
                       <Metric
-                        label="Duplicates"
+                        label="Duplikat"
                         value={list.duplicateCount}
                         tone="warning"
                         icon={<Copy className="size-3.5" />}
                       />
                       <Metric
-                        label="Invalid"
+                        label="Tidak valid"
                         value={list.invalidCount}
                         tone="danger"
                         icon={<XCircle className="size-3.5" />}
                       />
                       <Metric
-                        label="Campaigns"
+                        label="Kampanye"
                         value={list.campaignCount}
                         tone="info"
                         icon={<Megaphone className="size-3.5" />}

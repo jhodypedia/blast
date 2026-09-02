@@ -14,6 +14,9 @@ export type CampaignFormValues = {
   description: string;
   internalNotes: string;
   messageText: string;
+  mediaKey: string;
+  mediaMime: string;
+  mediaCaption: string;
   ctaLabel: string;
   ctaUrl: string;
   targetListId: string;

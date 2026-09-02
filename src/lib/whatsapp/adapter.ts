@@ -3,6 +3,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 
 import makeWASocket, {
+  Button,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } from "@rexxhayanasi/elaina-baileys";
@@ -41,7 +42,7 @@ function toJid(normalizedNumber: string): string {
 }
 
 const QR_TTL_MS = 60_000;
-const PAIR_CODE_TTL_MS = 120_000;
+const PAIR_CODE_TTL_MS = 180_000;
 /** Upper bound for a single send; beyond this the outcome is ambiguous. */
 const SEND_TIMEOUT_MS = 45_000;
 
@@ -107,7 +108,7 @@ async function connect(params: {
         try {
           const pairCode = await socket.requestPairingCode(
             params.pairing.normalizedNumber,
-            undefined,
+            params.pairing.customCode,
           );
           await params.onChallenge?.({
             method: "PAIR_CODE",
@@ -226,13 +227,23 @@ async function send(
   let writeAttempted = false;
 
   try {
-    const content = message.media
-      ? {
-          image: await readFile(message.media.storagePath),
-          mimetype: message.media.mimeType,
-          caption: message.media.caption ?? message.text,
-        }
-      : { text: message.text };
+    const content = message.cta
+      ? await (async () => {
+          const button = new Button(socket)
+            .setBody(message.media?.caption ?? message.text)
+            .addUrl(message.cta.label, message.cta.url);
+          if (message.media) {
+            button.setImage(await readFile(message.media.storagePath));
+          }
+          return button.build(jid);
+        })()
+      : message.media
+        ? {
+            image: await readFile(message.media.storagePath),
+            mimetype: message.media.mimeType,
+            caption: message.media.caption ?? message.text,
+          }
+        : { text: message.text };
 
     writeAttempted = true;
 

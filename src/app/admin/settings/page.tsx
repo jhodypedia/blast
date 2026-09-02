@@ -32,6 +32,11 @@ const EDITABLE = [
     help: "true or false.",
   },
   {
+    key: SETTING_KEYS.customPairingCode,
+    label: "Kode pairing custom global",
+    help: 'String JSON kosong atau tepat 8 karakter alfanumerik, misalnya "ELAINA01". Hanya admin yang menentukan kode ini.',
+  },
+  {
     key: SETTING_KEYS.qrEnabled,
     label: "QR pairing enabled",
     help: "true or false.",

@@ -123,3 +123,46 @@ export async function deleteStoredFile(storageKey: string): Promise<void> {
     }
   }
 }
+
+/** Stores approved campaign images outside public storage. */
+export async function saveCampaignMediaUpload(params: {
+  file: File;
+  maxBytes?: number;
+}): Promise<{ storageKey: string; mimeType: string }> {
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const maxBytes = params.maxBytes ?? 10 * 1024 * 1024;
+  const extension = safeExtension(params.file.name);
+
+  if (!allowed.has(params.file.type) || ![".jpg", ".jpeg", ".png", ".webp"].includes(extension)) {
+    throw validationError("Gunakan gambar JPG, PNG, atau WebP.", {
+      mediaFile: ["Format gambar tidak didukung"],
+    });
+  }
+  if (params.file.size === 0 || params.file.size > maxBytes) {
+    throw validationError("Ukuran gambar tidak valid.", {
+      mediaFile: [`Ukuran maksimal ${Math.floor(maxBytes / (1024 * 1024))} MB`],
+    });
+  }
+
+  const relativeDir = join("campaign-media", new Date().toISOString().slice(0, 10));
+  const storageKey = join(relativeDir, `${randomUUID()}${extension}`);
+  const absolutePath = resolveStoragePath(storageKey);
+  await mkdir(resolveStoragePath(relativeDir), { recursive: true });
+
+  const { createWriteStream } = await import("node:fs");
+  const { Readable } = await import("node:stream");
+  const { pipeline } = await import("node:stream/promises");
+  await pipeline(
+    Readable.fromWeb(params.file.stream() as Parameters<typeof Readable.fromWeb>[0]),
+    createWriteStream(absolutePath, { mode: 0o600 }),
+  );
+
+  const written = await stat(absolutePath);
+  if (written.size > maxBytes) {
+    await deleteStoredFile(storageKey);
+    throw validationError("Ukuran gambar tidak valid.", {
+      mediaFile: [`Ukuran maksimal ${Math.floor(maxBytes / (1024 * 1024))} MB`],
+    });
+  }
+  return { storageKey, mimeType: params.file.type };
+}

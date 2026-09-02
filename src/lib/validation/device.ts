@@ -12,13 +12,7 @@ import { ALLOWED_SPEED_SECONDS } from "@/lib/constants";
  * could influence payout, content or targeting is accepted from the client.
  */
 
-export const createDeviceSchema = z.object({
-  label: z
-    .string()
-    .trim()
-    .min(2, "Give the device a name of at least 2 characters")
-    .max(48, "Name must be at most 48 characters"),
-});
+export const createDeviceSchema = z.object({});
 
 export type CreateDeviceInput = z.infer<typeof createDeviceSchema>;
 
@@ -28,6 +22,11 @@ export const pairDeviceSchema = z
     deviceId: cuidSchema,
     method: z.enum(["QR", "PAIR_CODE"]),
     phoneNumber: optionalTrimmedString(24),
+    countryCode: z.string().trim().regex(/^[A-Z]{2}$/).optional(),
+    customCode: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().trim().regex(/^[A-Za-z0-9]{8}$/).optional(),
+    ),
   })
   .refine(
     (data) => data.method !== "PAIR_CODE" || Boolean(data.phoneNumber),

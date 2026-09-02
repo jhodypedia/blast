@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import { AlertCircle, Upload } from "lucide-react";
+import { AlertCircle, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -53,13 +53,13 @@ export function UploadTargetListForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="target-name">List name</Label>
+          <Label htmlFor="target-name">Nama daftar</Label>
           <Input
             id="target-name"
             name="name"
             required
             maxLength={120}
-            placeholder="October reminders"
+            placeholder="Kontak pelanggan Oktober"
             disabled={pending}
             aria-invalid={Boolean(fieldError("name"))}
           />
@@ -71,7 +71,7 @@ export function UploadTargetListForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="defaultCountryCode">Default country</Label>
+          <Label htmlFor="defaultCountryCode">Negara default</Label>
           <Input
             id="defaultCountryCode"
             name="defaultCountryCode"
@@ -82,22 +82,28 @@ export function UploadTargetListForm({
             aria-describedby="country-hint"
           />
           <p id="country-hint" className="text-xs text-muted-foreground">
-            Applied only to local numbers without a country prefix.
+            Hanya dipakai untuk nomor lokal tanpa awalan negara.
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="target-file">File</Label>
-        <Input
-          id="target-file"
-          name="file"
-          type="file"
-          accept=".txt,.csv"
-          required
-          disabled={pending}
-          aria-invalid={Boolean(fieldError("file"))}
-        />
+        <Label htmlFor="target-file">File nomor</Label>
+        <label htmlFor="target-file" className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-primary/35 bg-primary/5 px-5 py-7 text-center transition-colors hover:border-primary hover:bg-primary/10">
+          <FileText className="size-7 text-primary" aria-hidden="true" />
+          <span className="text-sm font-semibold">Pilih file .TXT atau .CSV</span>
+          <span className="text-xs text-muted-foreground">Satu nomor per baris, tanpa nama atau kolom tambahan</span>
+          <Input
+            id="target-file"
+            name="file"
+            type="file"
+            accept=".txt,.csv"
+            required
+            disabled={pending}
+            aria-invalid={Boolean(fieldError("file"))}
+            className="sr-only"
+          />
+        </label>
         {fieldError("file") ? (
           <p role="alert" className="text-xs text-destructive">
             {fieldError("file")}
@@ -107,7 +113,7 @@ export function UploadTargetListForm({
 
       <Button type="submit" loading={pending}>
         <Upload aria-hidden="true" />
-        Upload and import
+        Upload dan proses nomor
       </Button>
     </form>
   );

@@ -146,6 +146,8 @@ export type ParseOptions = {
   chunkSize: number;
   /** Hard cap on accepted valid numbers; the rest are reported as invalid. */
   maxNumbers: number;
+  /** Headerless CSV/TXT uploads must contain one number per row. */
+  numbersOnly?: boolean;
 };
 
 /**
@@ -173,6 +175,7 @@ export async function* parseTargetFile(
   let delimiter = ",";
   let phoneColumn = 0;
   let headerResolved = !isCsv;
+  let resolvedHeader = false;
 
   const stream = createReadStream(filePath, { encoding: "utf8" });
   const lines = createInterface({ input: stream, crlfDelay: Infinity });
@@ -190,6 +193,7 @@ export async function* parseTargetFile(
         const resolved = resolvePhoneColumn(splitCsvLine(line, delimiter));
         if (resolved) {
           phoneColumn = resolved.index;
+          resolvedHeader = true;
           // The line was a header row: skip it.
           continue;
         }
@@ -198,9 +202,18 @@ export async function* parseTargetFile(
 
       totals.sourceRowCount += 1;
 
-      const rawValue = isCsv
-        ? (splitCsvLine(line, delimiter)[phoneColumn] ?? "")
-        : line;
+      const fields = isCsv ? splitCsvLine(line, delimiter) : [line];
+      const rawValue = fields[phoneColumn] ?? "";
+
+      if (options.numbersOnly && isCsv && !resolvedHeader && fields.length !== 1) {
+        totals.invalidCount += 1;
+        chunk.invalid.push({
+          rowNumber: totals.sourceRowCount,
+          reason: "NON_NUMERIC",
+          sample: maskSample(line),
+        });
+        continue;
+      }
 
       if (totals.validCount >= options.maxNumbers) {
         totals.invalidCount += 1;

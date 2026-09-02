@@ -32,6 +32,7 @@ export type OutgoingMessage = {
   /** Canonical E.164 without `+`. */
   normalizedNumber: string;
   text: string;
+  cta?: { label: string; url: string };
   media?: {
     /** Absolute path inside the private storage root. */
     storagePath: string;
@@ -49,7 +50,7 @@ export type DeviceConnectionState =
 
 export type PairingRequest =
   | { method: "QR" }
-  | { method: "PAIR_CODE"; normalizedNumber: string };
+  | { method: "PAIR_CODE"; normalizedNumber: string; customCode?: string };
 
 export type PairingChallenge =
   /**

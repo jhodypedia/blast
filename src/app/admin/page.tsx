@@ -59,39 +59,39 @@ export default async function AdminOverviewPage() {
     <>
       <PageHeader
         icon={<LayoutDashboard className="size-5" />}
-        title="Overview"
-        description="Platform status across campaigns, delivery and payouts."
+        title="Ringkasan operasional"
+        description="Pantau kampanye, delivery, operator, dan pembayaran dari satu tempat."
       />
 
       <PageSections>
         <Stagger className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 xl:grid-cols-4">
           <LinkStat
             href="/admin/campaigns"
-            label="Active campaigns"
+            label="Kampanye aktif"
             value={String(activeCampaigns)}
-            hint="Currently sendable"
+            hint="Siap dijalankan"
             tone="info"
             icon={<Megaphone className="size-5" />}
           />
           <LinkStat
             href="/admin/jobs"
-            label="Live blast jobs"
+            label="Blast berjalan"
             value={String(liveJobs)}
-            hint="Queued, running or paused"
+            hint="Antrean, berjalan, atau jeda"
             tone="primary"
             icon={<Send className="size-5" />}
           />
           <LinkStat
             href="/admin/users"
-            label="Operators"
+            label="Operator"
             value={String(operators)}
-            hint="Active accounts"
+            hint="Akun terdaftar"
             tone="neutral"
             icon={<Users className="size-5" />}
           />
           <LinkStat
             href="/admin/withdrawals"
-            label="Withdrawals pending"
+            label="Penarikan tertunda"
             value={String(pendingWithdrawals)}
             hint={formatMoney(
               toMoneyString(pendingAmount._sum.netAmount?.toString() ?? "0"),
@@ -104,7 +104,7 @@ export default async function AdminOverviewPage() {
 
         {reconciliation > 0 ? (
           <SectionCard
-            title="Reconciliation required"
+            title="Perlu rekonsiliasi"
             description={`${reconciliation} recipient${
               reconciliation === 1 ? "" : "s"
             } had an ambiguous delivery result. These are never retried automatically and need a manual decision.`}
@@ -114,19 +114,18 @@ export default async function AdminOverviewPage() {
               <Button asChild size="sm" variant="outline">
                 <Link href="/admin/jobs">
                   <ClipboardList aria-hidden="true" />
-                  Review jobs
+                  Tinjau pekerjaan
                 </Link>
               </Button>
             }
           >
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Ambiguous sends stay in{" "}
+              Delivery yang ambigu tetap berada di{" "}
               <span className="font-semibold text-warning">
                 RECONCILIATION_REQUIRED
               </span>{" "}
-              until an administrator confirms or discards them. No earnings are
-              credited and no message is resent while a recipient is in this
-              state.
+              sampai admin mengonfirmasi atau menghapusnya. Tidak ada pembayaran
+              dan pesan tidak dikirim ulang dalam status ini.
             </p>
           </SectionCard>
         ) : null}

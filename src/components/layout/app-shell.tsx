@@ -150,10 +150,10 @@ export function AppShell({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  // Close the drawer whenever the route changes so back/forward never leaves it
-  // hanging open over new content.
+  // Close the drawer after back/forward navigation as well as link clicks.
   useEffect(() => {
-    setOpen(false);
+    const timer = window.setTimeout(() => setOpen(false), 0);
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   // Lock background scroll while the drawer overlays the page.
@@ -181,8 +181,10 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  const isActive = (href: string): boolean =>
-    pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string): boolean => {
+    if (href === "/dashboard") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   const tabs = items.slice(0, MOBILE_TABS);
   const activeItem = items.find((item) => isActive(item.href));

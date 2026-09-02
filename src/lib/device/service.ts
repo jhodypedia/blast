@@ -15,6 +15,10 @@ import { enqueueDeviceSession } from "@/lib/queue/queues";
 import type { DeviceSessionJobData } from "@/lib/queue/queues";
 import { recordAudit } from "@/lib/audit/service";
 import { logger } from "@/lib/observability/logger";
+import {
+  clearDeviceChallenge,
+  readDeviceChallenge,
+} from "@/lib/device/challenge-store";
 
 /**
  * Device service (RULES.md §8).
@@ -71,7 +75,6 @@ export async function listUserDevices(userId: string): Promise<DeviceSummary[]> 
  */
 export async function createDevice(params: {
   userId: string;
-  label: string;
 }): Promise<{ deviceId: string }> {
   const maxDevices = await getSetting(SETTING_KEYS.maxDevicesPerUser);
 
@@ -90,7 +93,7 @@ export async function createDevice(params: {
       const device = await tx.device.create({
         data: {
           userId: params.userId,
-          label: params.label,
+          label: `Perangkat ${existing + 1}`,
           status: "DISCONNECTED",
         },
         select: { id: true },
@@ -130,17 +133,22 @@ export async function requestPairing(params: {
   deviceId: string;
   method: "QR" | "PAIR_CODE";
   phoneNumber?: string;
+  countryCode?: string;
 }): Promise<void> {
   const device = await loadOwnedDevice(params.deviceId, params.userId);
 
   if (device.status === "CONNECTED") {
     throw invalidState("This device is already connected.");
   }
+  if (device.status === "CONNECTING" && (await readDeviceChallenge(device.id))) {
+    throw invalidState("Koneksi perangkat sedang diproses. Tunggu hingga kode kedaluwarsa.");
+  }
 
-  const [qrEnabled, pairCodeEnabled, defaultCountry] = await Promise.all([
+  const [qrEnabled, pairCodeEnabled, defaultCountry, customPairingCode] = await Promise.all([
     getSetting(SETTING_KEYS.qrEnabled),
     getSetting(SETTING_KEYS.pairCodeEnabled),
     getSetting(SETTING_KEYS.defaultCountryCode),
+    getSetting(SETTING_KEYS.customPairingCode),
   ]);
 
   if (params.method === "QR" && !qrEnabled) {
@@ -155,7 +163,7 @@ export async function requestPairing(params: {
   if (params.method === "PAIR_CODE") {
     const normalised = normalizePhoneNumber(
       params.phoneNumber ?? "",
-      defaultCountry,
+      params.countryCode ?? defaultCountry,
     );
     if (!normalised.ok) {
       throw validationError("Enter a valid WhatsApp number.", {
@@ -165,6 +173,7 @@ export async function requestPairing(params: {
     pairing = {
       method: "PAIR_CODE",
       normalizedNumber: normalised.normalizedNumber,
+      ...(customPairingCode ? { customCode: customPairingCode } : {}),
     };
   }
 
@@ -172,12 +181,21 @@ export async function requestPairing(params: {
     where: { id: device.id },
     data: { status: "CONNECTING", reconnectAttempts: 0, lastErrorCode: null },
   });
+  await clearDeviceChallenge(device.id);
 
-  await enqueueDeviceSession({
-    deviceId: device.id,
-    action: "CONNECT",
-    pairing,
-  });
+  try {
+    await enqueueDeviceSession({
+      deviceId: device.id,
+      action: "CONNECT",
+      pairing,
+    });
+  } catch (error) {
+    await prisma.device.updateMany({
+      where: { id: device.id, status: "CONNECTING" },
+      data: { status: "ERROR", lastErrorCode: "PAIRING_QUEUE_FAILED" },
+    });
+    throw error;
+  }
 }
 
 /** Disconnects a device without discarding its stored session. */

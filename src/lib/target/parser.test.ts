@@ -58,6 +58,10 @@ describe("resolvePhoneColumn", () => {
     expect(resolvePhoneColumn(["081234567890"])).toBeNull();
   });
 
+  it("recognises a number-only CSV row as data, not a header", () => {
+    expect(resolvePhoneColumn(["6281234567890"])).toBeNull();
+  });
+
   it("falls back to the first column for an unrecognised header", () => {
     expect(resolvePhoneColumn(["target", "label"])).toEqual({ index: 0 });
   });

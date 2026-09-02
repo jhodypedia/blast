@@ -31,6 +31,9 @@ export const TARGET_IMPORT_CHUNK_SIZE = 1_000;
 /** Hard cap on uploaded target file size (bytes). */
 export const MAX_TARGET_FILE_BYTES = 20 * 1024 * 1024;
 
+/** Maximum numbers accepted from one target upload. */
+export const MAX_TARGET_NUMBERS = 100_000;
+
 /** Accepted target upload MIME types (TXT/CSV only — RULES.md §11). */
 export const ACCEPTED_TARGET_MIME_TYPES = [
   "text/plain",
@@ -70,6 +73,7 @@ export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 export const SETTING_KEYS = {
   maxDevicesPerUser: "device.max_per_user",
   pairCodeEnabled: "device.pair_code_enabled",
+  customPairingCode: "device.custom_pairing_code",
   qrEnabled: "device.qr_enabled",
   deviceInactivityDays: "device.inactivity_days",
   defaultCountryCode: "target.default_country_code",

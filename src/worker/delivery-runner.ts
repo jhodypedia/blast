@@ -43,6 +43,7 @@ type SendContext = {
   payoutPerSend: string;
   currency: string;
   messageText: string;
+  cta?: { label: string; url: string };
   media?: { storagePath: string; mimeType: string; caption?: string };
 };
 
@@ -102,6 +103,9 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       payoutPerSend: job.snapshotPayoutPerSend.toString(),
       currency: job.snapshotCurrency,
       messageText: job.snapshotMessageText,
+      ...(job.snapshotCtaLabel && job.snapshotCtaUrl
+        ? { cta: { label: job.snapshotCtaLabel, url: job.snapshotCtaUrl } }
+        : {}),
       ...(job.snapshotMediaKey && job.snapshotMediaMime
         ? {
             media: {
@@ -204,6 +208,7 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
         const result = await whatsappAdapter.send(context.deviceId, {
           normalizedNumber: recipient.normalizedNumber,
           text: context.messageText,
+          ...(context.cta ? { cta: context.cta } : {}),
           ...(context.media ? { media: context.media } : {}),
         });
 

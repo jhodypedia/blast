@@ -116,7 +116,28 @@ describe("device schemas", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects a too-short device label", () => {
-    expect(createDeviceSchema.safeParse({ label: "a" }).success).toBe(false);
+  it("does not accept a device label from the client", () => {
+    const result = createDeviceSchema.safeParse({ label: "Nama manual" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).not.toHaveProperty("label");
+  });
+
+  it("accepts only an eight-character custom pairing code", () => {
+    expect(
+      pairDeviceSchema.safeParse({
+        deviceId: "clh1device0001",
+        method: "PAIR_CODE",
+        phoneNumber: "+6281234567890",
+        customCode: "ELAINA01",
+      }).success,
+    ).toBe(true);
+    expect(
+      pairDeviceSchema.safeParse({
+        deviceId: "clh1device0001",
+        method: "PAIR_CODE",
+        phoneNumber: "+6281234567890",
+        customCode: "short",
+      }).success,
+    ).toBe(false);
   });
 });

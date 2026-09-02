@@ -80,6 +80,15 @@ export function CampaignForm({
           <Input id="name" name="name" required maxLength={120} defaultValue={values.name} />
         </Field>
 
+        <input type="hidden" name="mediaKey" value={values.mediaKey} />
+        <input type="hidden" name="mediaMime" value={values.mediaMime} />
+        <Field id="mediaFile" label="Gambar kampanye (opsional)" error={fieldError("mediaFile")}>
+          <Input id="mediaFile" name="mediaFile" type="file" accept="image/jpeg,image/png,image/webp" />
+        </Field>
+        <Field id="mediaCaption" label="Caption gambar" error={fieldError("mediaCaption")}>
+          <Input id="mediaCaption" name="mediaCaption" maxLength={1024} defaultValue={values.mediaCaption} placeholder="Pesan singkat di bawah gambar" />
+        </Field>
+
         <Field
           id="description"
           label="Description shown to operators"

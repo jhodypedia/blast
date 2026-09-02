@@ -26,37 +26,37 @@ const NAV: NavItem[] = [
   },
   {
     href: "/admin/campaigns",
-    label: "Campaigns",
+    label: "Kampanye",
     icon: <Megaphone className="size-4 text-info" />,
   },
   {
     href: "/admin/target-lists",
-    label: "Target lists",
+    label: "Daftar nomor",
     icon: <ListChecks className="size-4 text-primary" />,
   },
   {
     href: "/admin/jobs",
-    label: "Blast jobs",
+    label: "Pekerjaan blast",
     icon: <ClipboardList className="size-4 text-info" />,
   },
   {
     href: "/admin/users",
-    label: "Operators",
+    label: "Operator",
     icon: <Users className="size-4 text-muted-foreground" />,
   },
   {
     href: "/admin/withdrawals",
-    label: "Withdrawals",
+    label: "Penarikan",
     icon: <Wallet className="size-4 text-success" />,
   },
   {
     href: "/admin/settings",
-    label: "Settings",
+    label: "Pengaturan",
     icon: <Settings className="size-4 text-muted-foreground" />,
   },
   {
     href: "/admin/audit",
-    label: "Audit log",
+    label: "Log audit",
     icon: <ScrollText className="size-4 text-warning" />,
   },
 ];
@@ -78,8 +78,8 @@ export default async function AdminLayout({
   return (
     <AppShell
       items={NAV}
-      title="Admin console"
-      subtitle="Campaigns, targets and payouts"
+      title="Konsol admin"
+      subtitle="Kampanye, nomor, dan pembayaran"
       accountName={actor.name || actor.email}
       accountEmail={actor.email}
     >

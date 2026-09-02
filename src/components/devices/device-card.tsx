@@ -2,8 +2,8 @@
 
 import { useActionState, useEffect, useState } from "react";
 import {
+  Check,
   Link2Off,
-  QrCode,
   RefreshCw,
   Smartphone,
   Trash2,
@@ -13,14 +13,12 @@ import { toast } from "sonner";
 
 import {
   deviceControlAction,
-  pairDeviceAction,
   type DeviceActionState,
 } from "@/app/actions/devices";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { DevicePairingModal } from "@/components/devices/device-pairing-modal";
 
 export type DeviceCardData = {
   id: string;
@@ -43,6 +41,14 @@ const STATUS_VARIANT: Record<
   ERROR: "danger",
 };
 
+const STATUS_LABEL: Record<DeviceCardData["status"], string> = {
+  CONNECTED: "Terhubung",
+  CONNECTING: "Menghubungkan",
+  DISCONNECTED: "Terputus",
+  EXPIRED: "Kedaluwarsa",
+  ERROR: "Kesalahan",
+};
+
 /**
  * One device row with its pairing and lifecycle controls.
  *
@@ -56,25 +62,12 @@ export function DeviceCard({
   device: DeviceCardData;
   pairCodeEnabled: boolean;
 }) {
-  const [pairState, pairAction, pairPending] = useActionState(
-    pairDeviceAction,
-    initialState,
-  );
   const [controlState, controlAction, controlPending] = useActionState(
     deviceControlAction,
     initialState,
   );
-  const [method, setMethod] = useState<"QR" | "PAIR_CODE">("QR");
   const [confirmRemove, setConfirmRemove] = useState(false);
-
-  useEffect(() => {
-    if (pairState.status === "success") {
-      toast.success(pairState.message);
-    }
-    if (pairState.status === "error") {
-      toast.error(pairState.message);
-    }
-  }, [pairState]);
+  const [pairingOpen, setPairingOpen] = useState(false);
 
   useEffect(() => {
     if (controlState.status === "success") {
@@ -85,7 +78,7 @@ export function DeviceCard({
     }
   }, [controlState]);
 
-  const busy = pairPending || controlPending;
+  const busy = controlPending;
 
   return (
     <motion.div
@@ -94,86 +87,42 @@ export function DeviceCard({
       transition={{ duration: 0.2, ease: "easeOut" }}
     >
       <Card>
-        <CardContent className="space-y-4 p-5">
-          <div className="flex items-start justify-between gap-3">
+        <CardContent className="space-y-5 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="shrink-0 rounded-lg bg-muted p-2">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 ring-1 ring-primary/20">
                 <Smartphone
                   className="size-5 text-primary"
                   aria-hidden="true"
                 />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{device.label}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {device.maskedNumber ?? "Not paired yet"}
+                <p className="truncate text-sm font-bold">{device.label}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {device.maskedNumber ?? "Belum terhubung ke WhatsApp"}
                 </p>
               </div>
             </div>
             <Badge variant={STATUS_VARIANT[device.status]}>
-              {device.status}
+              {STATUS_LABEL[device.status]}
             </Badge>
           </div>
 
           {device.status !== "CONNECTED" ? (
-            <form action={pairAction} className="space-y-3">
-              <input type="hidden" name="deviceId" value={device.id} />
-              <input type="hidden" name="method" value={method} />
-
-              <fieldset className="space-y-2" disabled={busy}>
-                <legend className="text-xs font-medium text-muted-foreground">
-                  Pairing method
-                </legend>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant={method === "QR" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setMethod("QR")}
-                    aria-pressed={method === "QR"}
-                  >
-                    <QrCode aria-hidden="true" />
-                    QR code
-                  </Button>
-                  {pairCodeEnabled ? (
-                    <Button
-                      type="button"
-                      variant={method === "PAIR_CODE" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setMethod("PAIR_CODE")}
-                      aria-pressed={method === "PAIR_CODE"}
-                    >
-                      Pair code
-                    </Button>
-                  ) : null}
-                </div>
-              </fieldset>
-
-              {method === "PAIR_CODE" ? (
-                <div className="space-y-2">
-                  <Label htmlFor={`phone-${device.id}`}>WhatsApp number</Label>
-                  <Input
-                    id={`phone-${device.id}`}
-                    name="phoneNumber"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="08123456789"
-                    maxLength={24}
-                    disabled={busy}
-                  />
-                </div>
-              ) : null}
-
-              <Button type="submit" size="sm" loading={pairPending}>
-                Start pairing
-              </Button>
-            </form>
-          ) : null}
+            <Button type="button" className="w-full" onClick={() => setPairingOpen(true)} disabled={busy}>
+              Hubungkan perangkat
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/8 px-3 py-2 text-xs font-semibold text-success">
+              <Check className="size-4" aria-hidden="true" /> Perangkat siap menjalankan blast
+            </div>
+          )}
 
           <DeviceControls
             deviceId={device.id}
             connected={device.status === "CONNECTED"}
             action={controlAction}
+            onReconnect={() => setPairingOpen(true)}
             pending={controlPending}
             busy={busy}
             confirmRemove={confirmRemove}
@@ -181,6 +130,7 @@ export function DeviceCard({
           />
         </CardContent>
       </Card>
+      <DevicePairingModal deviceId={device.id} deviceName={device.label} pairCodeEnabled={pairCodeEnabled} open={pairingOpen} onClose={() => setPairingOpen(false)} />
     </motion.div>
   );
 }
@@ -190,6 +140,7 @@ function DeviceControls({
   deviceId,
   connected,
   action,
+  onReconnect,
   pending,
   busy,
   confirmRemove,
@@ -198,14 +149,15 @@ function DeviceControls({
   deviceId: string;
   connected: boolean;
   action: (formData: FormData) => void;
+  onReconnect: () => void;
   pending: boolean;
   busy: boolean;
   confirmRemove: boolean;
   setConfirmRemove: (value: boolean) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-      <form action={action}>
+    <div className="flex flex-wrap gap-2 border-t border-border/70 pt-4">
+      <form action={action} onSubmit={() => { if (!connected) onReconnect(); }}>
         <input type="hidden" name="deviceId" value={deviceId} />
         <input
           type="hidden"
@@ -235,8 +187,8 @@ function DeviceControls({
         >
           <input type="hidden" name="deviceId" value={deviceId} />
           <input type="hidden" name="action" value="REMOVE" />
-          <span className="text-xs text-muted-foreground">
-            Remove this device?
+              <span className="text-xs text-muted-foreground">
+            Hapus perangkat ini?
           </span>
           <Button
             type="submit"
@@ -244,7 +196,7 @@ function DeviceControls({
             size="sm"
             loading={pending}
           >
-            Confirm
+            Konfirmasi
           </Button>
           <Button
             type="button"
@@ -252,7 +204,7 @@ function DeviceControls({
             size="sm"
             onClick={() => setConfirmRemove(false)}
           >
-            Cancel
+            Batal
           </Button>
         </form>
       ) : (
@@ -264,7 +216,7 @@ function DeviceControls({
           disabled={busy}
         >
           <Trash2 aria-hidden="true" />
-          Remove
+          Hapus
         </Button>
       )}
     </div>

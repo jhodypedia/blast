@@ -33,7 +33,7 @@ export type DeviceSessionJobData = {
    */
   pairing?:
     | { method: "QR" }
-    | { method: "PAIR_CODE"; normalizedNumber: string };
+    | { method: "PAIR_CODE"; normalizedNumber: string; customCode?: string };
 };
 
 export type MaintenanceJobData = {
@@ -109,7 +109,7 @@ export async function enqueueTargetImport(
   data: TargetImportJobData,
 ): Promise<void> {
   await enqueue(QUEUE_NAMES.targetImport, data, {
-    jobId: `import:${data.targetListId}`,
+    jobId: `import-${data.targetListId}`,
     attempts: 1,
   });
 }
@@ -118,7 +118,7 @@ export async function enqueueBlastDelivery(
   data: BlastDeliveryJobData,
 ): Promise<void> {
   await enqueue(QUEUE_NAMES.blastDelivery, data, {
-    jobId: `blast:${data.blastJobId}`,
+    jobId: `blast-${data.blastJobId}`,
     attempts: 1,
   });
 }
@@ -129,7 +129,7 @@ export async function enqueueDeviceSession(
   await enqueue(QUEUE_NAMES.deviceSession, data, {
     // Re-requesting a pairing must be able to supersede a stale attempt, so the
     // job id includes the action but not the pairing payload.
-    jobId: `device:${data.deviceId}:${data.action}`,
+    jobId: `device-${data.deviceId}-${data.action}`,
     attempts: 1,
   });
 }

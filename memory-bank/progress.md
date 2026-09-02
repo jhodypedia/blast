@@ -310,6 +310,101 @@ float arithmetic anywhere. Withdrawal request creates a negative
 row. Reject and cancel append a compensating `WITHDRAWAL_RELEASE`; the ledger is
 never mutated or deleted.
 
+## Device Pairing Update (2026-09-03)
+
+- Added an authenticated, ownership-scoped `GET /api/devices/[deviceId]/status`
+  endpoint. It reads the short-lived Redis challenge and converts real QR
+  payloads to a data URL server-side; no device credentials or phone numbers
+  are returned.
+- Device creation now generates the label (`Perangkat N`) inside the
+  serialisable transaction. The user form no longer accepts a device name and
+  opens the reusable pairing modal after creation.
+- The pairing modal polls the status endpoint, supports QR and pair-code tabs,
+  expiry/retry/connected states, clipboard copy, cleanup on close/unmount, and
+  `libphonenumber-js` validation with an ISO country selector. Backend
+  normalization remains authoritative and accepts the selected country only
+  for local ambiguous input.
+- Fixed the dashboard root navigation matcher so `/dashboard` is not active on
+  every child route. Device UI text was localized to Indonesian.
+- Verified editor diagnostics and `npm.cmd run lint`, `npm.cmd run typecheck`,
+  focused device validation tests, and `npm.cmd run build` in this session.
+  A real QR/pair-code session was not manually exercised because it requires a
+  running worker, Redis, and an actual WhatsApp device.
+
+## Custom Pairing Code Update (2026-09-03)
+
+- Read the installed package documentation for `@rexxhayanasi/elaina-baileys`.
+  Custom pairing uses `requestPairingCode(phoneNumber, customCode)` and the
+  custom value must be exactly 8 characters. The provider owns registration and
+  expiry; the application does not invent or persist codes.
+- Added optional server-validated alphanumeric `customCode` input and carried
+  it through the device action, queue payload, worker and isolated WhatsApp
+  adapter. Pairing code TTL now matches the documented provider window of 180
+  seconds.
+- Added focused validation coverage: custom code accepted at exactly 8
+  characters and rejected otherwise. Focused test passed (11 tests), editor
+  diagnostics are clean, and lint/typecheck/build were run after the update.
+
+## Admin Target Import and UI Update (2026-09-03)
+
+- Fixed the target worker using the file-byte limit as the accepted-number limit;
+  imports now use the explicit `MAX_TARGET_NUMBERS` cap of 100,000.
+- Headerless CSV/TXT imports are treated as number-only files. Headerless CSV
+  rows with extra columns are recorded as invalid instead of silently ignoring
+  metadata. Headered CSV files continue to support recognized phone columns.
+- Added parser regression coverage for number-only CSV detection. Focused parser
+  tests pass (14 tests).
+- Refreshed the ADMIN shell, overview copy, target-list page, upload dropzone,
+  status labels, and reconciliation messaging in Bahasa Indonesia. The upload
+  UI now clearly states that files must contain one number per row.
+- Editor diagnostics are clean. Lint, typecheck, focused parser tests, and a
+  production build were run; the terminal session sometimes interleaved output,
+  but no command reported a code error after the final changes.
+
+## Upload Queue Fix (2026-09-03)
+
+- Diagnosed the reported upload failure: BullMQ rejected deterministic custom
+  job IDs containing `:` with `Custom Id cannot contain :` after the target-list
+  audit transaction had completed.
+- Changed target import, blast delivery, and device session job IDs to use `-`
+  separators. Deduplication remains deterministic and BullMQ-compatible.
+- Verified editor diagnostics, lint, typecheck, and target parser regression
+  tests after the fix. New uploads require the worker to be running to process
+  the queued import; previously failed uploads must be submitted again.
+
+## Campaign Content and Pairing Policy Update (2026-09-03)
+
+- Campaign delivery now carries the existing snapshot CTA label/URL into the
+  worker and renders it through Elaina Baileys `Button.addUrl()`. Optional JPG,
+  PNG, and WebP campaign media is stored in private storage; its caption remains
+  part of the campaign snapshot and is used as the button body.
+- Custom pairing code is now an ADMIN-only global setting
+  (`device.custom_pairing_code`). USER pairing actions and UI no longer accept
+  or submit a custom code. The provider still receives the setting only through
+  the isolated WhatsApp adapter and validates the eight-character format.
+- No database migration was required because campaign media/CTA snapshot
+  fields and the settings JSON table already existed.
+- Editor diagnostics are clean. Lint/typecheck and focused campaign/device
+  checks were run; production build reached the optimized build stage, but the
+  terminal session did not return a reliable final exit line.
+
+## Stable QR and Pairing Update (2026-09-03)
+
+- Extracted Redis challenge storage into `lib/device/challenge-store.ts`, so
+  the authenticated device status route no longer imports a worker module.
+- The status route now returns only the real short-lived QR payload or provider
+  pairing code after session and device ownership checks. The browser generates
+  the QR image with `qrcode`; no QR data is persisted in browser storage.
+- Added expiry cleanup, stale-challenge clearing before a new request, abortable
+  polling, and retry submission that actually regenerates the selected challenge.
+  A live challenge prevents duplicate pairing requests; expired challenges can
+  be requested again.
+- Pairing errors expose only the safe device error code/status to the owner.
+  Custom pairing code remains sourced exclusively from the global ADMIN setting.
+- Focused pairing/phone tests pass (24 tests), editor diagnostics are clean, and
+  lint/typecheck/build were run after the update. A real WhatsApp device flow
+  still requires the worker, Redis, and a physical account session.
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`

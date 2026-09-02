@@ -3,9 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/observability/logger";
 import { whatsappAdapter } from "@/lib/whatsapp/adapter";
-import { redis } from "@/lib/redis/client";
 import type { DeviceSessionJobData } from "@/lib/queue/queues";
-import type { PairingChallenge } from "@/lib/whatsapp/types";
+import {
+  clearDeviceChallenge,
+  storeDeviceChallenge,
+} from "@/lib/device/challenge-store";
 
 /**
  * Device session processor.
@@ -14,44 +16,6 @@ import type { PairingChallenge } from "@/lib/whatsapp/types";
  * only in Redis with a TTL. They are never written to the database, to logs, or
  * to any audit record (RULES.md §8, §16).
  */
-
-const CHALLENGE_TTL_SECONDS = 120;
-
-function challengeKey(deviceId: string): string {
-  return `device:challenge:${deviceId}`;
-}
-
-/** Stores a pairing challenge for the owning user to collect. */
-async function storeChallenge(
-  deviceId: string,
-  challenge: PairingChallenge,
-): Promise<void> {
-  await redis().set(
-    challengeKey(deviceId),
-    JSON.stringify(challenge),
-    "EX",
-    CHALLENGE_TTL_SECONDS,
-  );
-}
-
-/**
- * Reads and clears a pending challenge. Callers must have already verified that
- * the requesting session owns the device.
- */
-export async function takeChallenge(
-  deviceId: string,
-): Promise<PairingChallenge | null> {
-  const raw = await redis().get(challengeKey(deviceId));
-  if (!raw) {
-    return null;
-  }
-
-  const parsed = JSON.parse(raw) as PairingChallenge & { expiresAt: string };
-  return {
-    ...parsed,
-    expiresAt: new Date(parsed.expiresAt),
-  } as PairingChallenge;
-}
 
 export async function processDeviceSession(
   data: DeviceSessionJobData,
@@ -98,7 +62,7 @@ export async function processDeviceSession(
     deviceId: device.id,
     pairing: data.pairing ?? { method: "QR" },
     onChallenge: async (challenge) => {
-      await storeChallenge(device.id, challenge);
+      await storeDeviceChallenge(device.id, challenge);
     },
     onUpdate: async (update) => {
       await prisma.device.update({
@@ -117,7 +81,7 @@ export async function processDeviceSession(
       });
 
       if (update.requiresReauth) {
-        await redis().del(challengeKey(device.id));
+        await clearDeviceChallenge(device.id);
       }
 
       log.info(

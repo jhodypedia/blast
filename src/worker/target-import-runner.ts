@@ -7,10 +7,9 @@ import { logger } from "@/lib/observability/logger";
 import { parseTargetFile } from "@/lib/target/parser";
 import { resolveStoragePath } from "@/lib/storage/private-storage";
 import {
-  SETTING_KEYS,
+  MAX_TARGET_NUMBERS,
   TARGET_IMPORT_CHUNK_SIZE,
 } from "@/lib/constants";
-import { getSetting } from "@/lib/settings/service";
 import type { TargetImportJobData } from "@/lib/queue/queues";
 
 /**
@@ -31,15 +30,14 @@ export async function processTargetImport(
     data: { status: "PARSING", importStartedAt: new Date() },
   });
 
-  const maxNumbers = await getSetting(SETTING_KEYS.maxTargetFileBytes);
-
   try {
     const iterator = parseTargetFile(absolutePath, {
       defaultCountry: data.defaultCountryCode,
       chunkSize: TARGET_IMPORT_CHUNK_SIZE,
       // One number costs far fewer than one byte of file, so the byte cap is a
       // safe upper bound for the row cap as well.
-      maxNumbers,
+      maxNumbers: MAX_TARGET_NUMBERS,
+      numbersOnly: true,
     });
 
     await prisma.targetList.update({

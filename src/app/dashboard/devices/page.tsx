@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { PlusCircle, ShieldAlert, Smartphone } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleDot,
+  PlusCircle,
+  ShieldAlert,
+  Smartphone,
+  Wifi,
+} from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { listUserDevices } from "@/lib/device/service";
@@ -17,7 +24,7 @@ import {
 import { AddDeviceForm } from "@/components/devices/add-device-form";
 import { DeviceCard } from "@/components/devices/device-card";
 
-export const metadata: Metadata = { title: "Devices" };
+export const metadata: Metadata = { title: "Perangkat" };
 
 /**
  * Device management for the signed-in operator.
@@ -41,22 +48,58 @@ export default async function DevicesPage() {
     <>
       <PageHeader
         icon={<Smartphone className="size-5" />}
-        title="Devices"
-        description={`Connect up to ${maxDevices} WhatsApp devices. Each device can run one blast job at a time.`}
+        title="Perangkat"
+        description={`Hubungkan hingga ${maxDevices} perangkat WhatsApp. Setiap perangkat dapat menjalankan satu pekerjaan blast.`}
         actions={
           <Badge variant={atCapacity ? "warning" : "success"}>
-            {connected} connected · {devices.length}/{maxDevices} slots
+            {connected} terhubung · {devices.length}/{maxDevices} slot
           </Badge>
         }
       />
 
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="group relative overflow-hidden rounded-2xl border border-success/25 bg-success/8 p-4 shadow-panel">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-success/15 text-success">
+              <Wifi className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status jaringan</p>
+              <p className="mt-1 text-sm font-bold text-success">Sistem siap digunakan</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-primary/25 bg-primary/8 p-4 shadow-panel">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <CircleDot className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Slot tersedia</p>
+              <p className="mt-1 text-sm font-bold">{maxDevices - devices.length} dari {maxDevices} slot</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-info/25 bg-info/8 p-4 shadow-panel">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-info/15 text-info">
+              <CheckCircle2 className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Perangkat aktif</p>
+              <p className="mt-1 text-sm font-bold">{connected} siap blast</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <PageSections>
         <SectionCard
-          title="Add a device"
+          title="Tambah perangkat"
           description={
             atCapacity
               ? `You have reached the limit of ${maxDevices} devices. Remove one to add another.`
-              : `${devices.length} of ${maxDevices} slots used.`
+              : `${devices.length} dari ${maxDevices} slot digunakan.`
           }
           icon={<PlusCircle className="size-5" />}
           tone={atCapacity ? "warning" : "primary"}
@@ -65,11 +108,11 @@ export default async function DevicesPage() {
             <Notice
               tone="warning"
               icon={<ShieldAlert className="size-5" />}
-              title="Device limit reached"
+              title="Batas perangkat tercapai"
               className="mb-5"
             >
-              The limit is set by the platform team. Remove an existing device to
-              free a slot.
+              Batas ini ditentukan oleh admin. Hapus perangkat yang ada untuk
+              membebaskan slot.
             </Notice>
           ) : null}
           <AddDeviceForm disabled={atCapacity} />
@@ -78,8 +121,8 @@ export default async function DevicesPage() {
         {devices.length === 0 ? (
           <EmptyState
             icon={<Smartphone className="size-6" />}
-            title="No devices yet"
-            description="Add one above, then pair it with WhatsApp to start running assigned campaigns."
+            title="Belum ada perangkat"
+            description="Tambahkan perangkat di atas, lalu hubungkan ke WhatsApp untuk menjalankan kampanye yang ditugaskan."
           />
         ) : (
           <Stagger className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
