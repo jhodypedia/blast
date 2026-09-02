@@ -101,7 +101,7 @@ export async function processDeviceSession(
         if (
           update.state === "DISCONNECTED" &&
           !update.requiresReauth &&
-          !data.pairing
+          (!data.pairing || update.errorCode === "DISCONNECT_515")
         ) {
           const changed = await prisma.device.updateMany({
             where: { id: device.id, status: "DISCONNECTED" },
