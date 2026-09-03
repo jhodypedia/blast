@@ -26,7 +26,10 @@ export const RATE_LIMITS = {
   register: { name: "register", limit: 3, windowSeconds: 3600 },
   passwordReset: { name: "pwreset", limit: 3, windowSeconds: 3600 },
   passwordChange: { name: "pwchange", limit: 5, windowSeconds: 900 },
-  devicePairing: { name: "pairing", limit: 5, windowSeconds: 600 },
+  // Pairing is limited per device in the action, while the aggregate rule
+  // prevents a user from consuming unlimited pairing capacity across devices.
+  devicePairing: { name: "pairing-device", limit: 5, windowSeconds: 600 },
+  devicePairingUser: { name: "pairing-user", limit: 25, windowSeconds: 600 },
   deviceCreate: { name: "device-create", limit: 10, windowSeconds: 3600 },
   withdrawalRequest: { name: "withdrawal", limit: 3, windowSeconds: 3600 },
   walletSet: { name: "wallet-set", limit: 3, windowSeconds: 3600 },

@@ -13,7 +13,7 @@ export function isAllowedSpeed(value: number): value is AllowedSpeedSeconds {
 }
 
 /** Default device cap per USER; overridable by ADMIN via settings. */
-export const DEFAULT_MAX_DEVICES_PER_USER = 4;
+export const DEFAULT_MAX_DEVICES_PER_USER = 5;
 
 /** Upper bound the admin UI will accept for the device cap. */
 export const MAX_DEVICES_PER_USER_LIMIT = 20;

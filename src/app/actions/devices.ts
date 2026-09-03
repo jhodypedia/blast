@@ -124,9 +124,11 @@ export async function pairDeviceAction(
     }
 
     const ip = await clientIp();
+    const ipHash = hashForLogging(ip);
+    await enforceRateLimit(RATE_LIMITS.devicePairingUser, actor.id);
     await enforceRateLimit(
       RATE_LIMITS.devicePairing,
-      `${actor.id}:${hashForLogging(ip)}`,
+      `${actor.id}:${parsed.data.deviceId}:${ipHash}`,
     );
 
     await requestPairing({

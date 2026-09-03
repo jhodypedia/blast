@@ -1,6 +1,6 @@
 # Project Memory — WhatsApp Blast SaaS
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -489,6 +489,15 @@ never mutated or deleted.
    anything currently in `npm run verify`.
 
 ## Next Task
+
+### Device pairing rate limits (2026-09-03)
+
+- Default and seeded maximum devices per user are now 5.
+- Pairing attempts are limited to 5 per device per 10 minutes, with an
+  aggregate limit of 25 per user per 10 minutes. Both limits use shared Redis
+  counters and remain safe across multiple web instances.
+- Existing databases keep their current `device.max_per_user` setting; update
+  it to 5 through ADMIN Settings (or rerun the seed in a disposable database).
 
 1. Resolve gap 4: decide whether dev moves to port 3307, and apply the migration
    there if so.

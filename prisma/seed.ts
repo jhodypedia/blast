@@ -14,7 +14,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
  */
 
 const SETTING_DEFAULTS: Array<{ key: string; value: unknown }> = [
-  { key: "device.max_per_user", value: 4 },
+  { key: "device.max_per_user", value: 5 },
   { key: "device.pair_code_enabled", value: true },
   { key: "device.qr_enabled", value: true },
   { key: "device.inactivity_days", value: 30 },
