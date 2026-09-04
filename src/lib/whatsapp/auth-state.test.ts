@@ -31,7 +31,11 @@ const tx = {
 
 const prisma = {
   deviceAuthState: {
-    findUnique: vi.fn(() => Promise.resolve({ ciphertext: null })),
+    // No stored row: `loadAuthState` initialises fresh creds. Returning an
+    // object with a null ciphertext would instead send it down the decrypt path.
+    findUnique: vi.fn((): Promise<{ ciphertext: string } | null> =>
+      Promise.resolve(null),
+    ),
     findMany: vi.fn(() => Promise.resolve([])),
     upsert: vi.fn((args: unknown) => {
       calls.push({ op: "upsert", args });
@@ -74,8 +78,20 @@ beforeEach(() => {
   calls.length = 0;
   transactionOptions = undefined;
   vi.clearAllMocks();
-  prisma.deviceAuthState.findUnique.mockResolvedValue({ ciphertext: null });
+  prisma.deviceAuthState.findUnique.mockResolvedValue(null);
 });
+
+/**
+ * A loaded state with the bookkeeping from the initial creds write discarded, so
+ * assertions only see what `keys.set` itself does.
+ */
+async function freshAuth() {
+  const auth = await loadAuthState("device-1");
+  calls.length = 0;
+  transactionOptions = undefined;
+  vi.clearAllMocks();
+  return auth;
+}
 
 /** A first-registration key set: 30 pre-keys, exactly as Baileys emits it. */
 function preKeySet(): Record<string, Record<string, unknown>> {
@@ -88,8 +104,7 @@ function preKeySet(): Record<string, Record<string, unknown>> {
 
 describe("loadAuthState keys.set", () => {
   it("writes a 30-key set with one delete and one insert", async () => {
-    const auth = await loadAuthState("device-1");
-    calls.length = 0;
+    const auth = await freshAuth();
 
     await auth.state.keys.set(preKeySet());
 
@@ -108,7 +123,7 @@ describe("loadAuthState keys.set", () => {
   });
 
   it("raises the transaction budget above the 5s default", async () => {
-    const auth = await loadAuthState("device-1");
+    const auth = await freshAuth();
 
     await auth.state.keys.set(preKeySet());
 
@@ -116,8 +131,7 @@ describe("loadAuthState keys.set", () => {
   });
 
   it("deletes keys set to null and does not insert them", async () => {
-    const auth = await loadAuthState("device-1");
-    calls.length = 0;
+    const auth = await freshAuth();
 
     await auth.state.keys.set({
       "pre-key": { "1": null, "2": { public: Buffer.from([2]) } },
@@ -137,8 +151,7 @@ describe("loadAuthState keys.set", () => {
   });
 
   it("skips the transaction entirely for an empty set", async () => {
-    const auth = await loadAuthState("device-1");
-    calls.length = 0;
+    const auth = await freshAuth();
 
     await auth.state.keys.set({ "pre-key": {} });
 
@@ -146,8 +159,7 @@ describe("loadAuthState keys.set", () => {
   });
 
   it("deletes without inserting when every key is removed", async () => {
-    const auth = await loadAuthState("device-1");
-    calls.length = 0;
+    const auth = await freshAuth();
 
     await auth.state.keys.set({ session: { "a@s.whatsapp.net": null } });
 

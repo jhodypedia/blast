@@ -292,11 +292,13 @@ export function DevicePairingModal({
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-sm font-bold uppercase text-foreground">
               <p>
-                {connectionError || pairState.status === "error"
-                  ? "Koneksi gagal dimulai."
-                  : expired
-                    ? "Kode kedaluwarsa. Minta yang baru."
-                    : "Menunggu koneksi dari worker..."}
+                {connectionError && payload?.device.errorCode === "NUMBER_ALREADY_LINKED"
+                  ? "Nomor ini sudah terhubung di perangkat lain. Putuskan perangkat itu lebih dahulu."
+                  : connectionError || pairState.status === "error"
+                    ? "Koneksi gagal dimulai."
+                    : expired
+                      ? "Kode kedaluwarsa. Minta yang baru."
+                      : "Menunggu koneksi dari worker..."}
               </p>
               <form action={pairAction}>
                 <input type="hidden" name="deviceId" value={deviceId} />

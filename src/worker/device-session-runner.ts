@@ -32,6 +32,85 @@ import {
  */
 const PAIRING_RESTART_TTL_SECONDS = 120;
 
+/** Prisma's unique-constraint violation. */
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
+/**
+ * Frees a WhatsApp number from the owner's other device slots so the freshly
+ * paired one can record it.
+ *
+ * `Device` is unique on `[userId, phoneNumber]`, and MySQL applies that index to
+ * soft-deleted rows too, so a removed or long-dead slot would otherwise block its
+ * number from ever being paired again: the state write fails with P2002 and the
+ * device is stranded in CONNECTING. A slot that is currently CONNECTED keeps the
+ * number instead — one WhatsApp account must not occupy two live slots, or it
+ * would send at twice its configured pace.
+ *
+ * Returns false when another live slot keeps the number.
+ */
+async function claimDeviceNumber(params: {
+  deviceId: string;
+  userId: string;
+  normalizedNumber: string;
+}): Promise<boolean> {
+  const holders = await prisma.device.findMany({
+    where: {
+      userId: params.userId,
+      phoneNumber: params.normalizedNumber,
+      id: { not: params.deviceId },
+    },
+    select: { id: true, status: true, deletedAt: true },
+  });
+
+  if (holders.length === 0) {
+    return true;
+  }
+  if (
+    holders.some(
+      (holder) => !holder.deletedAt && holder.status === "CONNECTED",
+    )
+  ) {
+    return false;
+  }
+
+  await prisma.device.updateMany({
+    where: { id: { in: holders.map((holder) => holder.id) } },
+    data: { phoneNumber: null },
+  });
+  return true;
+}
+
+/**
+ * Refuses a session whose number already belongs to another live slot.
+ *
+ * The socket is closed rather than logged out, so the credentials survive for the
+ * owner to keep once the other slot is freed.
+ */
+async function rejectDuplicateNumber(deviceId: string): Promise<void> {
+  await whatsappAdapter.disconnect(deviceId);
+  await clearDeviceChallenge(deviceId);
+  await releasePairing(deviceId);
+  await prisma.device.update({
+    where: { id: deviceId },
+    data: {
+      status: "ERROR",
+      lastSeenAt: new Date(),
+      lastErrorCode: "NUMBER_ALREADY_LINKED",
+    },
+  });
+
+  logger("device").warn(
+    { event: "device.number_already_linked", deviceId },
+    "Refused a paired session because its number is linked to another device",
+  );
+}
+
 export async function processDeviceSession(
   data: DeviceSessionJobData,
 ): Promise<void> {
@@ -41,6 +120,7 @@ export async function processDeviceSession(
     where: { id: data.deviceId, deletedAt: null },
     select: {
       id: true,
+      userId: true,
       status: true,
       user: { select: { status: true, deletedAt: true } },
     },
@@ -85,20 +165,47 @@ export async function processDeviceSession(
         await storeDeviceChallenge(device.id, challenge);
       },
       onUpdate: async (update) => {
-        await prisma.device.update({
-          where: { id: device.id },
-          data: {
-            status: update.state,
-            ...(update.normalizedNumber
-              ? { phoneNumber: update.normalizedNumber }
-              : {}),
-            ...(update.state === "CONNECTED"
-              ? { lastConnectedAt: new Date(), reconnectAttempts: 0 }
-              : {}),
-            lastSeenAt: new Date(),
-            lastErrorCode: update.errorCode ?? null,
-          },
-        });
+        // WhatsApp only reveals the paired number once the socket opens, so the
+        // unique `[userId, phoneNumber]` slot is settled here rather than when
+        // pairing was requested.
+        if (update.normalizedNumber) {
+          const claimed = await claimDeviceNumber({
+            deviceId: device.id,
+            userId: device.userId,
+            normalizedNumber: update.normalizedNumber,
+          });
+          if (!claimed) {
+            await rejectDuplicateNumber(device.id);
+            return;
+          }
+        }
+
+        try {
+          await prisma.device.update({
+            where: { id: device.id },
+            data: {
+              status: update.state,
+              ...(update.normalizedNumber
+                ? { phoneNumber: update.normalizedNumber }
+                : {}),
+              ...(update.state === "CONNECTED"
+                ? { lastConnectedAt: new Date(), reconnectAttempts: 0 }
+                : {}),
+              lastSeenAt: new Date(),
+              lastErrorCode: update.errorCode ?? null,
+            },
+          });
+        } catch (error) {
+          // Two sessions carrying the same number can clear the claim check at
+          // once. This callback runs inside the adapter's event handler, so the
+          // loser throwing here would surface as an unhandled rejection and take
+          // the whole worker process down.
+          if (update.normalizedNumber && isUniqueConstraintError(error)) {
+            await rejectDuplicateNumber(device.id);
+            return;
+          }
+          throw error;
+        }
 
         // `restarting` marks the mandatory post-pairing socket rebuild
         // (WhatsApp status 515). The adapter owns that retry, so the pairing

@@ -1,6 +1,6 @@
 # Project Memory — WhatsApp Blast SaaS
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Purpose
 
@@ -28,7 +28,7 @@ unexercised against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | exit 0 — 218 tests, 20 files |
+| Unit tests | `npm test` (`vitest run`) | exit 0 — 232 tests, 22 files |
 | Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
 | Build | `npm run build` | exit 0 |
 
@@ -681,6 +681,92 @@ point it is picked up within two minutes. No manual DB edit needed.
 - **Not** verified: the sweep has not yet re-queued a real job, because no
   eligible job exists while the only device is `EXPIRED`.
 
+## Real-Device Pairing Fixes (2026-09-05)
+
+First run of `npm run worker` against a real phone (gap 2). Pairing failed three
+times in a row; each fix exposed the next fault, so all three are recorded
+together. The number is now paired end to end.
+
+### 1. Pair code never reached WhatsApp
+
+Worker log: `device.pair_code_failed`, then `logging in...`, then
+`Error: Connection Failure` at `elaina-baileys/lib/Socket/socket.js:801`, ending
+`EXPIRED`. Two compounding causes in `src/lib/whatsapp/adapter.ts`:
+
+- The code was requested on `connection: "connecting"`, which Baileys emits from
+  `process.nextTick` **before** the WebSocket is open, so `sendNode` threw
+  `Connection Closed`. The request is now gated on the first `qr` ref — the only
+  event that proves the handshake reached the server.
+- `requestPairingCode` mutates and persists `creds.me` before it sends. The failed
+  attempt therefore left an *identified but unregistered* session on disk, so the
+  next handshake took the `generateLoginNode` path, WhatsApp answered `CB:failure`,
+  and the device went `EXPIRED` instead of retrying. `openSocket` now discards
+  unlinked-but-identified creds (`device.pairing_state_reset`) before a pairing
+  attempt, and a failed `requestPairingCode` tears the socket down completely
+  (`disposed`, `sockets.delete`, `socket.end`, flush, `clearAuthState`).
+- `isLinked(creds)` checks `registered || account`, because QR pairing sets only
+  `account`.
+
+Confirmed by the log line `Own LID session created successfully`.
+
+### 2. Auth-state write blew the transaction budget
+
+`prisma.deviceAuthState.upsert()` at `auth-state.ts:175` aborted with "A rollback
+cannot be executed on an expired transaction. The timeout for this transaction was
+5000 ms, however 5017 ms passed". Baileys hands `keys.set` a whole key set at
+once — a first registration writes 30 pre-keys — and the old code mapped each key
+to its own `upsert` inside an **array-form** `$transaction`, so one call cost ~90
+round trips against Prisma's silent 5s default. `keys.set` is now one interactive
+transaction containing a single `deleteMany` plus a single `createMany`, at
+`{ timeout: 15_000 }`, and returns early when the set is empty.
+
+### 3. Paired number collided with a dead device slot
+
+`prisma.device.update()` at `device-session-runner.ts:88` threw P2002 on
+`Device_userId_phoneNumber_key` (`Duplicate entry '…-6288989494927'`) the instant
+pairing succeeded. `Device` is `@@unique([userId, phoneNumber])` and **MySQL
+applies that index to soft-deleted rows too**, so an earlier slot of the same user
+still held the number and permanently blocked it. Worse, the write happens inside
+the adapter's event callback and `enqueueDeviceSession` uses `attempts: 1`, so the
+throw surfaced as an unhandled rejection and killed the worker process.
+
+`src/worker/device-session-runner.ts` now reconciles the slot before writing:
+
+- `claimDeviceNumber` releases the number (`phoneNumber: null`, safe because MySQL
+  treats NULLs as distinct) from the owner's other slots.
+- A slot that is genuinely `deletedAt: null` **and** `CONNECTED` keeps the number
+  instead; the new session is refused with `lastErrorCode: "NUMBER_ALREADY_LINKED"`
+  and merely disconnected, not logged out, so the credentials survive. One account
+  must not occupy two live slots or `delivery-runner` would send at twice its
+  configured pace.
+- A P2002 raced past the claim check is caught and funnelled to the same refusal,
+  so the worker can no longer die here.
+- `device-pairing-modal.tsx` gives `NUMBER_ALREADY_LINKED` its own Indonesian copy
+  instead of the generic "Koneksi gagal dimulai."
+
+### Verification
+
+- `tsc --noEmit` — exit 0.
+- `eslint .` — exit 0, no output.
+- `vitest run` — **22 files / 232 tests**, all green. Two new files:
+  `src/lib/whatsapp/auth-state.test.ts` (5 cases pinning the batched shape: op
+  order `$transaction`/`deleteMany`/`createMany`, 30 rows in one insert, `upsert`
+  never called, the 15s budget, null-value deletes, empty set skipped) and
+  `src/worker/device-session-runner.test.ts` (6 cases: clean record, takeover from
+  a soft-deleted slot, takeover from a dead slot, refusal against a `CONNECTED`
+  slot, survival of a raced P2002, and rethrow of unrelated write failures).
+- `npm run build` — exit 0, same 24 route entries.
+- Fix 1 is confirmed against the real phone. Fixes 2 and 3 are confirmed by the
+  original errors no longer appearing in that run, but the duplicate-number
+  **refusal** branch has only been exercised by mocks.
+
+Machine note added to the two already recorded: this PowerShell session
+intermittently loses even its built-in cmdlets (`cd`, `Get-Content`,
+`Set-Location`). Reliable route is
+`& "$env:SystemRoot\System32\cmd.exe" /c "cd /d <repo> && …"`, redirecting to a
+log file; `npx` is not resolvable, so run vitest as
+`node node_modules\vitest\vitest.mjs`.
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`
@@ -689,9 +775,12 @@ point it is picked up within two minutes. No manual DB edit needed.
    the failure/ambiguity paths — 12 tests, all green against MariaDB 11.4. Auth,
    device limits, target import, campaign assignment, wallet and withdrawal still
    have no integration tests. No E2E tests exist at all.
-2. **WhatsApp adapter unexercised.** Pairing, QR, reconnect and send have not run
-   against a real device. The 515 restart path is covered by mocked unit tests
-   only.
+2. **WhatsApp adapter partially exercised.** Pair-code linking now works against a
+   real phone (see "Real-Device Pairing Fixes", 2026-09-05): pair code accepted,
+   auth state persisted, `phoneNumber` recorded, device `CONNECTED`. Still unproven
+   against a real device: QR pairing, the 515 restart re-attaching on the second
+   socket generation, silent reconnect, actual message sending, and the
+   `NUMBER_ALREADY_LINKED` refusal.
 3. **Turnstile** falls back to a hidden `development-placeholder` token in the
    widget when no site key is configured. `verifyTurnstileToken` throws
    `CAPTCHA_FAILED` whenever the secret is missing and `NODE_ENV === "production"`,
@@ -741,9 +830,9 @@ point it is picked up within two minutes. No manual DB edit needed.
    and `.tools/` are gone), run `npm run db:test:setup`, and re-run
    `npm run test:integration` — it has not been executed since the locking change.
 2. Exercise `npm run worker` against a real device for one small seeded campaign,
-   end to end, and record what the WhatsApp adapter actually does on pair,
-   reconnect and send. Confirm specifically that the 515 restart re-attaches on
-   the second socket generation and that the pairing lock survives it.
+   end to end. Pairing itself is now done (2026-09-05); what remains is to confirm
+   that the 515 restart re-attaches on the second socket generation, that the
+   pairing lock survives it, and that a send actually reaches a recipient.
 3. Extend integration coverage outward from delivery: device limits, target
    import, then withdrawal hold/release.
 4. Add a checked-in smoke test for the HTTP surface (gap 6) so route-level 500s
