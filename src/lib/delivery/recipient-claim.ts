@@ -3,15 +3,19 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTransactionClient } from "@/lib/db/prisma";
 import { prisma } from "@/lib/db/prisma";
+import { rowLockClause } from "@/lib/db/locking";
 import { RECIPIENT_LEASE_MS } from "@/lib/constants";
 
 /**
  * Atomic recipient claiming (RULES.md §12).
  *
- * Claiming uses `SELECT ... FOR UPDATE SKIP LOCKED` inside a short transaction
- * so concurrent workers never hand the same recipient to two devices. The
- * transaction closes before any WhatsApp call is made — a network call must
- * never be awaited while holding row locks.
+ * Claiming uses a locking `SELECT` inside a short transaction so concurrent
+ * workers never hand the same recipient to two devices. `FOR UPDATE SKIP LOCKED`
+ * is used where the server supports it (MySQL >= 8.0, MariaDB >= 10.6); older
+ * servers fall back to a blocking `FOR UPDATE`, and the conditional status
+ * transition keeps exclusivity either way. The transaction closes before any
+ * WhatsApp call is made — a network call must never be awaited while holding row
+ * locks.
  */
 
 export type ClaimedRecipient = {
@@ -37,11 +41,18 @@ export async function claimRecipients(params: {
 }): Promise<ClaimedRecipient[]> {
   const leaseMs = params.leaseMs ?? RECIPIENT_LEASE_MS;
 
+  // Probed outside the transaction and cached per process; the probe opens its
+  // own transaction so it must not run nested inside this one.
+  const lockClause = await rowLockClause(prisma);
+
   return prisma.$transaction(
     async (tx) => {
       const now = new Date();
 
-      // MySQL 8: SKIP LOCKED lets parallel workers take disjoint batches.
+      // The locking read keeps parallel workers off the same rows. Where the
+      // server supports it this is `SKIP LOCKED`, so batches are disjoint;
+      // otherwise it blocks, and the conditional transitions below remain the
+      // guarantee that a recipient is only ever handed to one worker.
       const rows = await tx.$queryRaw<
         Array<{
           id: bigint;
@@ -61,7 +72,7 @@ export async function claimRecipients(params: {
           )
         ORDER BY id ASC
         LIMIT ${params.limit}
-        FOR UPDATE SKIP LOCKED
+        ${lockClause}
       `);
 
       if (rows.length === 0) {
@@ -71,8 +82,13 @@ export async function claimRecipients(params: {
       const ids = rows.map((row) => row.id);
       const leaseExpiresAt = new Date(now.getTime() + leaseMs);
 
-      await tx.campaignRecipient.updateMany({
-        where: { id: { in: ids } },
+      // Conditional on the rows still being eligible: without SKIP LOCKED a
+      // blocked reader can wake up on rows another worker has already taken.
+      const claimed = await tx.campaignRecipient.updateMany({
+        where: {
+          id: { in: ids },
+          status: { in: ["PENDING", "RETRYABLE_FAILED"] },
+        },
         data: {
           status: "CLAIMED",
           blastJobId: params.blastJobId,
@@ -82,7 +98,32 @@ export async function claimRecipients(params: {
         },
       });
 
-      return rows;
+      if (claimed.count === rows.length) {
+        return rows;
+      }
+
+      // Some rows were lost to a competing worker; return only what this worker
+      // actually owns so the caller never sends on someone else's recipient.
+      // Rows this worker claimed on an earlier pass cannot appear here: they are
+      // no longer PENDING/RETRYABLE_FAILED, so the select above skipped them.
+      const owned = await tx.campaignRecipient.findMany({
+        where: {
+          id: { in: ids },
+          status: "CLAIMED",
+          blastJobId: params.blastJobId,
+          workerId: params.workerId,
+        },
+        select: {
+          id: true,
+          normalizedNumber: true,
+          recipientRef: true,
+          idempotencyKey: true,
+          attemptCount: true,
+        },
+        orderBy: { id: "asc" },
+      });
+
+      return owned;
     },
     { timeout: 10_000, isolationLevel: "ReadCommitted" },
   );

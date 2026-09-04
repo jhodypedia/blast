@@ -100,7 +100,10 @@ async function readRecipient(recipientId: bigint) {
 }
 
 beforeAll(async () => {
-  // Fail loudly and early rather than reporting confusing per-test errors.
+  // Deliberately a hard failure, not a skip. The application degrades to a
+  // blocking `FOR UPDATE` on an older server, but these tests are the only
+  // execution-level proof that concurrent workers get disjoint batches. Skipping
+  // would report a green run while that guarantee went unverified.
   const capabilities = await detectCapabilities();
   if (!capabilities.supportsSkipLocked) {
     throw new Error(skipLockedRequirementMessage(capabilities.version));

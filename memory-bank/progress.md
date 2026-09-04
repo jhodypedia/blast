@@ -1,6 +1,6 @@
 # Project Memory — WhatsApp Blast SaaS
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Purpose
 
@@ -10,14 +10,17 @@ next. Read this together with `RULES.md` and `AGENTS.md` before starting work.
 ## Current State
 
 The application is feature-complete for the ADMIN and USER surfaces described in
-`RULES.md`. Lint, typecheck, unit tests and a production build pass, and the
-delivery invariants now also pass as **integration tests against a live
-MariaDB 11.4** (portable instance on port 3307), so `FOR UPDATE SKIP LOCKED`
-claiming, lease recovery and ledger idempotency are verified by execution rather
-than by types. Redis is available locally as a portable instance on 6379. The
-app has also been **booted with the real `.env` and probed over HTTP** end to
-end (see "Live HTTP probe" below). The WhatsApp adapter is still unexercised
-against a real device.
+`RULES.md`. Lint, typecheck, unit tests and a production build pass. Delivery
+invariants were previously verified as **integration tests against a live
+MariaDB 11.4** (portable instance on port 3307) — that instance no longer exists
+on this machine, so those tests have not run since the row-locking change
+(2026-09-04, see "Portable Row Locking Fix" and gap 4). Locking reads are now
+capability-probed at runtime, so the XAMPP MariaDB 10.4 dev database on 3306 can
+execute both the start-job allocation and recipient claiming, serialised rather
+than skipping locked rows. Redis is available locally as a portable instance on
+6379. The app has also been **booted with the real `.env` and probed over HTTP**
+end to end (see "Live HTTP probe" below). The WhatsApp adapter is still
+unexercised against a real device.
 
 ### Verification (last full run)
 
@@ -25,9 +28,9 @@ against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | exit 0 — 174 tests, 16 files |
-| Integration tests | `npm run test:integration` | exit 0 — 12 tests, 1 file, live MariaDB 11.4 on 3307 |
-| Build | `npm run build` | exit 0 — 22 routes, no `[ioredis] Unhandled error event` |
+| Unit tests | `npm test` (`vitest run`) | exit 0 — 209 tests, 19 files |
+| Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
+| Build | `npm run build` | exit 0 |
 
 Re-run after the dark-green frontend redesign and the `motion.tsx` rewrite
 (2026-09-02): lint exit 0, `tsc --noEmit` exit 0, `vitest run` **178/178 in 17
@@ -76,9 +79,13 @@ bodies produced false failures.
 ### Local infrastructure (must be started each session)
 
 Both are hidden processes, not Windows services, so they do **not** survive a
-reboot or logout. The binaries live under `.tools/` (gitignored); the launcher
-scripts were scratch `_*` files and have been deleted, so the commands are
-recorded here instead.
+reboot or logout. The launcher scripts were scratch `_*` files and have been
+deleted, so the commands are recorded here instead.
+
+> **Stale as of 2026-09-04:** the `.tools/` directory and the portable MariaDB
+> 11.4 instance on 3307 are gone from this machine — port 3307 is closed and the
+> only `mysqld` running is XAMPP's. The commands below are kept as a recipe for
+> re-provisioning; adjust `$d` to wherever the binaries are placed.
 
 Redis 8.10.1 → `redis://127.0.0.1:6379`:
 
@@ -220,19 +227,38 @@ Consequences worth remembering:
 - **Large form files were split** to stay under the editor write limit:
   `campaign-form.tsx` / `campaign-form-shared.tsx` / `campaign-delivery-fields.tsx`.
   Shared `Field`, `SPEED_OPTIONS` and form types live in the `-shared` file.
-- **MariaDB 10.6 / MySQL 8.0 is a hard floor**, not a preference.
-  `claimRecipients` and the start-job allocation depend on
-  `FOR UPDATE SKIP LOCKED`, which MariaDB 10.4 (what XAMPP ships) parses as a
-  syntax error (SQL 1064). There is no safe fallback: without SKIP LOCKED,
-  parallel workers either block on each other or take overlapping batches, and an
-  overlapping batch means a double send. Hence the portable MariaDB 11.4 instance
-  on 3307 rather than reusing XAMPP.
+- **`SKIP LOCKED` is a throughput optimisation, not a correctness requirement.**
+  Both locking reads (`claimRecipients` and the start-job allocation) now go
+  through `src/lib/db/locking.ts`, which probes the server once per process and
+  emits `FOR UPDATE SKIP LOCKED` where it exists (MySQL >= 8.0, MariaDB >= 10.6)
+  and a plain `FOR UPDATE` otherwise (MariaDB 10.4, what XAMPP ships, rejects
+  `SKIP LOCKED` with SQL 1064). Degrading costs concurrency only: exclusivity is
+  still guaranteed by the unique `(campaignId, normalizedNumber)` constraint plus
+  `skipDuplicates` and the post-insert recount, and by the conditional
+  `status IN ('PENDING','RETRYABLE_FAILED')` transition in `claimRecipients`,
+  which re-reads and returns only the rows this worker actually owns when a
+  blocked reader wakes on rows a competitor already took. MariaDB >= 10.6 or
+  MySQL >= 8.0 remains the recommendation for production throughput.
+- **MariaDB has never supported MySQL's `FOR UPDATE OF <table>`.** That, not the
+  missing `SKIP LOCKED`, was the actual defect behind the `startBlastAction`
+  failure: the allocation query used `FOR UPDATE OF tn SKIP LOCKED`, which is
+  SQL 1064 on *every* MariaDB version including 11.4. MariaDB's grammar is
+  `FOR UPDATE [WAIT n | NOWAIT | SKIP LOCKED]` with no table list. The integration
+  suite never caught it because it only exercises `claimRecipients`, whose clause
+  was the plain valid form.
 - **Database capability is detected by behaviour, not by version string.**
-  `tests/integration/db-capabilities.ts` runs `SELECT 1 ... FOR UPDATE SKIP
-  LOCKED` inside a throwaway transaction and caches the outcome; forks and distro
-  builds misreport `VERSION()`, so parsing it would be wrong on exactly the
-  machines where it matters. `beforeAll` throws an actionable message when the
-  probe fails, instead of leaving five tests to fail with raw SQL 1064.
+  Both `src/lib/db/locking.ts` (runtime) and `tests/integration/db-capabilities.ts`
+  (tests) run `SELECT 1 ... FOR UPDATE SKIP LOCKED` inside a throwaway transaction
+  and cache the outcome; forks and distro builds misreport `VERSION()`, so parsing
+  it would be wrong on exactly the machines where it matters. Detection matches
+  SQL **error codes** (1064 / `ER_PARSE_ERROR` / SQLSTATE 42000) rather than
+  message text, because drivers echo the failing statement back in the message —
+  a phrase match would classify a dropped connection as unsupported syntax and
+  cache the degraded mode for the whole process. A failed probe is never cached.
+  `beforeAll` in the delivery suite still throws an actionable message, on purpose:
+  the application degrades gracefully but those tests are the only execution-level
+  proof that concurrent workers get disjoint batches, so skipping would report
+  green while the guarantee went unverified.
 - **Integration tests are excluded from `npm test`** by the `include` pattern in
   `vitest.config.mts`, and live in `vitest.integration.config.mts` with
   `maxWorkers: 1` + `fileParallelism: false`. Files must run sequentially because
@@ -515,6 +541,72 @@ now lives in the adapter.
 - Still unverified against a real device: the restart has not been observed
   against WhatsApp itself (see gap 2).
 
+## Portable Row Locking Fix (2026-09-04)
+
+Starting a blast job always failed. `POST /dashboard/campaigns` returned 200 with
+`startBlastAction` yielding `{"status":"error","message":"Something went wrong.
+Please try again."}` — the generic `internalError()` body, because the action maps
+any non-`AppError` to that message and logs the real cause under
+`event: "blast.action_failed"`.
+
+**Cause.** The recipient allocation query in `src/lib/blast/start-job.ts` ended in
+`FOR UPDATE OF tn SKIP LOCKED`. `FOR UPDATE OF <table>` is MySQL-only syntax;
+MariaDB has never accepted it on any version, so the statement was SQL 1064
+(`ER_PARSE_ERROR`) regardless of server version, and the transaction aborted
+before a `BlastJob` row could be written. Proven by probing the dev database
+directly: `plain` and `FOR UPDATE` forms of the same query returned the expected
+2 rows, while `FOR UPDATE OF tn`, `FOR UPDATE OF tn SKIP LOCKED` and
+`FOR UPDATE SKIP LOCKED` all failed with 1064 on `10.4.32-MariaDB`.
+
+**Fix.** New `src/lib/db/locking.ts` owns the locking suffix:
+
+- `lockClauseFor(mode)` returns one of two fixed `Prisma.raw` literals,
+  `FOR UPDATE SKIP LOCKED` or `FOR UPDATE`. Nesting a `Prisma.Sql` into a
+  `Prisma.sql` template splices its text without adding bound values, so every
+  user value in the surrounding query stays parameterised.
+- `detectRowLockMode` probes `SELECT 1 FROM CampaignRecipient WHERE 1 = 0 FOR
+  UPDATE SKIP LOCKED` in its own transaction (matches no rows, locks nothing),
+  downgrades only on a *syntax* rejection, and rethrows anything else.
+- `rowLockMode` caches the promise per process and clears it on rejection;
+  `resetRowLockMode()` exists for tests.
+
+`start-job.ts` now builds the allocation query with `Prisma.sql` + `${lockClause}`
+instead of `$queryRawUnsafe`, and `recipient-claim.ts` uses the same clause. The
+clause is resolved *before* opening the outer transaction, because the probe opens
+one of its own.
+
+Claiming also gained a safety net for the degraded path: the `updateMany` is now
+conditional on `status IN ('PENDING','RETRYABLE_FAILED')`, and when fewer rows
+transition than were selected — which a blocking read makes possible, since a
+blocked reader wakes on rows a competitor already claimed — it re-reads and
+returns only the rows stamped with this worker's id. Exclusivity therefore no
+longer depends on `SKIP LOCKED` at all.
+
+`LogScope` in `src/lib/observability/logger.ts` gained `"db"` for the one-time
+downgrade warning.
+
+### Verification
+
+- `npm test` — exit 0, **19 files / 209 tests**, including the new
+  `src/lib/db/locking.test.ts` (clause text and empty `values`, an explicit
+  assertion that the clause is never `FOR UPDATE OF <alias>`, code-based vs
+  text-based error classification incl. ECONNREFUSED and lock-wait timeout 1205
+  as *not* unsupported, self-referential `cause` chains, probe-once-per-process
+  caching, no caching of a failed probe, and that nesting the clause into a
+  `Prisma.sql` leaves the bound values untouched).
+- `npm run typecheck` — exit 0. `npm run lint` — exit 0. `npm run build` — exit 0.
+- **Executed against the real dev database** (`10.4.32-MariaDB` on 3306) with a
+  throwaway script: the probe logged the downgrade once, the clause resolved to
+  `FOR UPDATE`, and the full `startBlastJob` database path — allocation, the
+  `BlastJob` insert and `createMany` of the recipients — ran inside a transaction
+  that was then deliberately rolled back. Result: `allocated: 2`,
+  `recipientsInserted: 2`; counts afterwards unchanged
+  (`blastJob: 0`, `campaignRecipient: 0`, `targetNumber: 2`), and no queue job was
+  enqueued, so the running worker sent nothing. The script has been deleted.
+- **Not** verified: `npm run test:integration` (see gap 4 — no server with
+  `SKIP LOCKED` is available on this machine any more), and a real browser click
+  through `/dashboard/campaigns`.
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`
@@ -532,12 +624,17 @@ now lives in the adapter.
    and skips only outside production, so a misconfigured production deploy fails
    closed rather than losing protection. The real widget has not been exercised
    end to end.
-4. **The dev database on XAMPP (3306) cannot execute claims.** It is MariaDB 10.4,
-   which has no `FOR UPDATE SKIP LOCKED`. Anything that starts a blast job or
-   claims recipients will fail there with SQL 1064. Either point `DATABASE_URL` at
-   the portable 11.4 instance on 3307 and run `prisma migrate deploy` against the
-   `blast` database there, or accept that only non-delivery flows work in dev. Not
-   yet decided.
+4. **Dev throughput on XAMPP (3306) is serialised, not broken.** It is MariaDB
+   10.4, which has no `FOR UPDATE SKIP LOCKED`, so `src/lib/db/locking.ts` falls
+   back to a blocking `FOR UPDATE` there (one warning line per process,
+   `event: "db.skip_locked_unsupported"`). Starting a blast job and claiming
+   recipients both work; parallel workers queue behind each other instead of
+   taking disjoint batches. Production should still use MySQL >= 8.0 or
+   MariaDB >= 10.6. Note the portable 11.4 instance on 3307 and the `.tools/`
+   directory described above **no longer exist on this machine** — the port is
+   closed and only XAMPP's `mysqld` is running, so `npm run test:integration`
+   cannot run until a supported server is provisioned again and
+   `npm run db:test:setup` is re-run.
 5. **Portable Redis and MariaDB are not services.** Both must be relaunched after
    every reboot or logout (commands under "Local infrastructure"); a stale
    assumption here shows up as connection-refused rather than as a clear error.
@@ -566,8 +663,9 @@ now lives in the adapter.
 - Existing databases keep their current `device.max_per_user` setting; update
   it to 5 through ADMIN Settings (or rerun the seed in a disposable database).
 
-1. Resolve gap 4: decide whether dev moves to port 3307, and apply the migration
-   there if so.
+1. Provision a MySQL >= 8.0 / MariaDB >= 10.6 server again (the old 3307 instance
+   and `.tools/` are gone), run `npm run db:test:setup`, and re-run
+   `npm run test:integration` — it has not been executed since the locking change.
 2. Exercise `npm run worker` against a real device for one small seeded campaign,
    end to end, and record what the WhatsApp adapter actually does on pair,
    reconnect and send. Confirm specifically that the 515 restart re-attaches on

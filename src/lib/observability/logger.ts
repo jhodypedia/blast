@@ -72,6 +72,7 @@ function baseLogger(): Logger {
 export type LogScope =
   | "web"
   | "auth"
+  | "db"
   | "security"
   | "campaign"
   | "target"

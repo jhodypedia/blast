@@ -2,7 +2,9 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { rowLockClause } from "@/lib/db/locking";
 import {
   conflict,
   forbidden,
@@ -217,29 +219,31 @@ export async function startBlastJob(
 
   const blastJobId = randomUUID();
 
+  // Probed outside the transaction: the answer is cached per process and the
+  // probe itself opens a transaction, so it must not run inside another one.
+  const lockClause = await rowLockClause(prisma);
+
   const created = await prisma.$transaction(
     async (tx) => {
       // Allocate numbers from the campaign's target list that no recipient row
-      // has claimed yet. `FOR UPDATE ... SKIP LOCKED` lets concurrent operators
-      // take disjoint slices, and the unique (campaignId, normalizedNumber)
-      // constraint is the final guarantee of one row per number per campaign.
-      const available = await tx.$queryRawUnsafe<
+      // has claimed yet. The locking read keeps concurrent operators off the
+      // same rows, and the unique (campaignId, normalizedNumber) constraint is
+      // the final guarantee of one row per number per campaign.
+      const available = await tx.$queryRaw<
         Array<{ normalizedNumber: string }>
-      >(
-        `SELECT tn.normalizedNumber AS normalizedNumber
-           FROM TargetNumber tn
-           JOIN Campaign c ON c.targetListId = tn.targetListId
-           LEFT JOIN CampaignRecipient cr
-             ON cr.campaignId = c.id
-            AND cr.normalizedNumber = tn.normalizedNumber
-          WHERE c.id = ?
-            AND cr.id IS NULL
-          ORDER BY tn.id ASC
-          LIMIT ?
-          FOR UPDATE OF tn SKIP LOCKED`,
-        campaign.id,
-        remainingQuota,
-      );
+      >(Prisma.sql`
+        SELECT tn.normalizedNumber AS normalizedNumber
+        FROM TargetNumber tn
+        JOIN Campaign c ON c.targetListId = tn.targetListId
+        LEFT JOIN CampaignRecipient cr
+          ON cr.campaignId = c.id
+         AND cr.normalizedNumber = tn.normalizedNumber
+        WHERE c.id = ${campaign.id}
+          AND cr.id IS NULL
+        ORDER BY tn.id ASC
+        LIMIT ${remainingQuota}
+        ${lockClause}
+      `);
 
       if (available.length === 0) {
         throw conflict("There are no recipients left for this campaign.");
