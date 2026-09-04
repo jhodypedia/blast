@@ -449,6 +449,72 @@ never mutated or deleted.
   `npm.cmd` resolution, so a real device reconnect still needs worker, Redis,
   and WhatsApp session verification.
 
+## Restart-Required (515) Pairing Update (2026-09-04)
+
+WhatsApp ends a successful link by closing the socket with `restartRequired`
+(status 515). Previously that close was handled as a generic disconnect: the
+worker cleared the Redis challenge and released the pairing lock at the exact
+moment the restart was required, requeued a CONNECT job that had lost its
+`pairing` payload, and waited for the 5s–120s BullMQ backoff. Pairing therefore
+appeared to fail right after the user scanned or entered the code. The restart
+now lives in the adapter.
+
+- `src/lib/whatsapp/adapter.ts`: `connect` only dedupes; a new private
+  `openSocket(params, restartAttempt)` builds one socket generation. On a 515
+  close the adapter flushes credentials, waits 1s and constructs a **new**
+  socket from the saved creds — required because Baileys' `end()` calls
+  `ev.destroy()`, so the old socket can never be reused. Bounded by
+  `MAX_RESTART_ATTEMPTS = 3`, after which the update carries
+  `RESTART_EXHAUSTED`.
+- Credential writes are serialised through a `persistCreds` promise chain
+  instead of fire-and-forget, and `isNewLogin` awaits it. Without this the
+  replacement socket reads a pre-pairing snapshot and starts the handshake
+  again.
+- `SocketHandle` gained `disposed`, set by `disconnect`/`logout`, so a
+  deliberate teardown is never mistaken for a 515. A stale-generation guard
+  (`sockets.get(deviceId) !== handle`) drops trailing events from a superseded
+  socket.
+- `requestPairingCode` is now gated on `restartAttempt === 0` and on
+  `!creds.registered`: re-requesting a code against paired credentials
+  invalidates the session. `qrTimeout` is passed so the library's QR rotation
+  matches the advertised 60s TTL, and a QR is forwarded when no pairing method
+  was requested (silent reconnect) but never during a pair-code flow.
+- `ConnectionUpdate.restarting` (new, in `src/lib/whatsapp/types.ts`) marks the
+  `PAIRED` and `RESTART_REQUIRED` updates. `src/worker/device-session-runner.ts`
+  responds by clearing the spent challenge and calling the new
+  `renewPairing(deviceId, 120)` in `src/lib/device/challenge-store.ts` instead
+  of releasing the lock, and the old `DISCONNECT_515` requeue is gone, so 515 no
+  longer touches the reconnect backoff.
+- Storage: `src/lib/whatsapp/auth-state.ts` now revives `app-state-sync-key`
+  values through `proto.Message.AppStateSyncKeyData.fromObject` (mirroring the
+  library's own file store). JSON round-tripping had been dropping the protobuf
+  prototype, which breaks app-state sync immediately after pairing. `proto` is
+  re-exported from the package root, so this stays inside `src/lib/whatsapp/`.
+- Frontend: `/api/devices/[deviceId]/status` returns a derived `restarting`
+  flag (`CONNECTING` plus `PAIRED`/`RESTART_REQUIRED`) and sends `no-store` on
+  both branches. `src/components/devices/device-pairing-modal.tsx` renders a
+  dedicated "Menyelesaikan koneksi" state ahead of the challenge branches, an
+  `m:ss` countdown driven by a 1s tick, and distinct copy for an expired
+  challenge instead of claiming the connection failed. The QR data URL is now
+  keyed by its payload so no `setState` runs synchronously in an effect (the
+  React Compiler lint rules reject that).
+- Copy in `src/app/actions/devices.ts` and
+  `src/components/devices/device-card.tsx` was unified to Indonesian.
+
+### Verification
+
+- `npm run lint` — clean (one pre-existing `@next/next/no-img-element` warning
+  on the QR `<img>`; the QR is a runtime data URL and must not be optimised).
+- `npm run typecheck` — clean.
+- `npm run test` — 18 files, 191 tests, all green, including the new
+  `src/lib/whatsapp/adapter.test.ts` (11 tests: 515 rebuild, `isNewLogin`,
+  creds-before-reload ordering, stale-generation guard, restart budget,
+  logged-out cleanup, deliberate disconnect, and the four pairing-challenge
+  cases). Baileys and the auth state are mocked, so no socket is opened.
+- `npm run build` — succeeded.
+- Still unverified against a real device: the restart has not been observed
+  against WhatsApp itself (see gap 2).
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`
@@ -458,7 +524,8 @@ never mutated or deleted.
    device limits, target import, campaign assignment, wallet and withdrawal still
    have no integration tests. No E2E tests exist at all.
 2. **WhatsApp adapter unexercised.** Pairing, QR, reconnect and send have not run
-   against a real device.
+   against a real device. The 515 restart path is covered by mocked unit tests
+   only.
 3. **Turnstile** falls back to a hidden `development-placeholder` token in the
    widget when no site key is configured. `verifyTurnstileToken` throws
    `CAPTCHA_FAILED` whenever the secret is missing and `NODE_ENV === "production"`,
@@ -503,7 +570,8 @@ never mutated or deleted.
    there if so.
 2. Exercise `npm run worker` against a real device for one small seeded campaign,
    end to end, and record what the WhatsApp adapter actually does on pair,
-   reconnect and send.
+   reconnect and send. Confirm specifically that the 515 restart re-attaches on
+   the second socket generation and that the pairing lock survives it.
 3. Extend integration coverage outward from delivery: device limits, target
    import, then withdrawal hold/release.
 4. Add a checked-in smoke test for the HTTP surface (gap 6) so route-level 500s

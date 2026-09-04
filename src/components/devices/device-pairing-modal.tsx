@@ -28,12 +28,25 @@ const COUNTRIES = [
 ] as const;
 
 type StatusPayload = {
-  device: { label: string; status: string; errorCode?: string | null };
+  device: {
+    label: string;
+    status: string;
+    errorCode?: string | null;
+    restarting?: boolean;
+  };
   challenge:
     | { method: "QR"; qr: string; expiresAt: string }
     | { method: "PAIR_CODE"; pairCode: string; expiresAt: string }
     | null;
 };
+
+/** Remaining validity of a challenge, rendered as `m:ss`. */
+function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 export function DevicePairingModal({
   deviceId,
@@ -54,7 +67,9 @@ export function DevicePairingModal({
   const [payload, setPayload] = useState<StatusPayload | null>(null);
   const [now, setNow] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<{ qr: string; dataUrl: string } | null>(
+    null,
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [pairState, pairAction, pairPending] = useActionState(
     pairDeviceAction,
@@ -96,9 +111,12 @@ export function DevicePairingModal({
     if (!open) return;
     const initial = window.setTimeout(() => void refreshStatus(), 0);
     const interval = window.setInterval(() => void refreshStatus(), 2000);
+    // Separate 1s tick so the expiry countdown moves smoothly between polls.
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(interval);
+      window.clearInterval(tick);
       requestRef.current?.abort();
       requestRef.current = null;
     };
@@ -112,22 +130,22 @@ export function DevicePairingModal({
     if (pairState.status === "error") toast.error(pairState.message);
   }, [pairState, refreshStatus]);
 
+  // The rendered QR is keyed by its payload so a stale image is filtered out
+  // during render instead of being cleared with a synchronous setState.
   useEffect(() => {
     const qrChallenge =
       payload?.challenge?.method === "QR" ? payload.challenge : null;
-    if (!open || !qrChallenge) {
-      setQrDataUrl(null);
-      return;
-    }
+    if (!open || !qrChallenge) return;
+    const qr = qrChallenge.qr;
     let cancelled = false;
-    void QRCode.toDataURL(qrChallenge.qr, {
+    void QRCode.toDataURL(qr, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 240,
     }).then((dataUrl) => {
-      if (!cancelled) setQrDataUrl(dataUrl);
+      if (!cancelled) setQrImage({ qr, dataUrl });
     }).catch(() => {
-      if (!cancelled) setQrDataUrl(null);
+      if (!cancelled) setQrImage(null);
     });
     return () => { cancelled = true; };
   }, [open, payload?.challenge]);
@@ -136,14 +154,24 @@ export function DevicePairingModal({
 
   const connected = payload?.device.status === "CONNECTED";
   const connectionError = payload?.device.status === "ERROR";
+  // WhatsApp closes the socket right after a successful link and requires a
+  // rebuild (status 515). That is progress, not a failure, so it gets its own
+  // state instead of falling through to the error copy.
+  const restarting = payload?.device.restarting === true;
   const challenge = payload?.challenge;
   const qrChallenge = challenge?.method === "QR" ? challenge : null;
   const pairCodeChallenge = challenge?.method === "PAIR_CODE" ? challenge : null;
   const methods: ("QR" | "PAIR_CODE")[] =
     pairCodeEnabled === false ? ["QR"] : ["QR", "PAIR_CODE"];
-  const expired = challenge
-    ? now > 0 && new Date(challenge.expiresAt).getTime() <= now
-    : false;
+  // `now` is refreshed by the status poll and by a 1s tick, so the clock is read
+  // from state rather than during render. It stays 0 until the first poll lands.
+  const remainingMs =
+    challenge && now > 0
+      ? new Date(challenge.expiresAt).getTime() - now
+      : null;
+  const expired = remainingMs !== null && remainingMs <= 0;
+  const qrDataUrl =
+    qrChallenge && qrImage?.qr === qrChallenge.qr ? qrImage.dataUrl : null;
 
   function validatePhone() {
     if (method !== "PAIR_CODE") return true;
@@ -243,15 +271,27 @@ export function DevicePairingModal({
               <strong>Terhubung</strong>
               <span className="text-sm text-muted-foreground">Perangkat siap digunakan.</span>
             </div>
+          ) : restarting ? (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-info">
+              <Loader2 className="size-8 animate-spin" />
+              <strong>Menyelesaikan koneksi</strong>
+              <span className="text-sm text-muted-foreground">Perangkat berhasil ditautkan. WhatsApp meminta sesi dimulai ulang, mohon tunggu.</span>
+            </div>
           ) : loadingStatus && !payload ? (
             <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-5 animate-spin" /> Mengambil status...</div>
           ) : qrChallenge && !expired ? (
-            <div className="flex flex-col items-center gap-2">{qrDataUrl ? <img src={qrDataUrl} alt="QR Code WhatsApp" width={240} height={240} className="rounded-lg bg-white p-2" /> : <Loader2 className="my-20 size-6 animate-spin text-primary" />}<span className="text-xs text-muted-foreground">Pindai QR Code ini dari WhatsApp.</span></div>
+            <div className="flex flex-col items-center gap-2">{qrDataUrl ? <img src={qrDataUrl} alt="QR Code WhatsApp" width={240} height={240} className="rounded-lg bg-white p-2" /> : <Loader2 className="my-20 size-6 animate-spin text-primary" />}<span className="text-xs text-muted-foreground">Pindai QR Code ini dari WhatsApp.</span>{remainingMs !== null ? <span className="text-xs font-medium text-muted-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
           ) : pairCodeChallenge && !expired ? (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="font-mono text-2xl tracking-[0.2em] text-primary">{pairCodeChallenge.pairCode}</strong><Button type="button" variant="ghost" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(pairCodeChallenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div></div>
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="font-mono text-2xl tracking-[0.2em] text-primary">{pairCodeChallenge.pairCode}</strong><Button type="button" variant="ghost" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(pairCodeChallenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div>{remainingMs !== null ? <span className="text-xs font-medium text-muted-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
-              <p>{connectionError || pairState.status === "error" ? "Koneksi gagal dimulai." : "Menunggu koneksi dari worker..."}</p>
+              <p>
+                {connectionError || pairState.status === "error"
+                  ? "Koneksi gagal dimulai."
+                  : expired
+                    ? "Kode kedaluwarsa. Minta yang baru."
+                    : "Menunggu koneksi dari worker..."}
+              </p>
               <form action={pairAction}>
                 <input type="hidden" name="deviceId" value={deviceId} />
                 <input type="hidden" name="method" value={method} />

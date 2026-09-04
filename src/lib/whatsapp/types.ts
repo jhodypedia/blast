@@ -67,6 +67,13 @@ export type ConnectionUpdate = {
   normalizedNumber?: string;
   /** Safe error code for diagnostics. */
   errorCode?: string;
+  /**
+   * True while the adapter is rebuilding the socket itself, which WhatsApp
+   * demands right after a successful pairing (`restartRequired`, status 515).
+   * Callers must keep any pairing challenge and pairing lock intact and must not
+   * schedule their own reconnect for these updates.
+   */
+  restarting?: boolean;
   /** True when the session is unrecoverable and credentials must be cleared. */
   requiresReauth?: boolean;
 };
@@ -75,6 +82,10 @@ export type WhatsAppAdapter = {
   /**
    * Starts or resumes a session. Emits pairing challenges through `onChallenge`
    * and lifecycle changes through `onUpdate`.
+   *
+   * Resolves once the socket has been handed to the library; the outcome arrives
+   * through `onUpdate`, including the `restarting` updates the adapter emits
+   * while it rebuilds the socket after a successful pairing.
    */
   connect(params: {
     deviceId: string;

@@ -168,12 +168,12 @@ function DeviceControls({
           {connected ? (
             <>
               <Link2Off aria-hidden="true" />
-              Disconnect
+              Putuskan
             </>
           ) : (
             <>
               <RefreshCw aria-hidden="true" />
-              Reconnect
+              Hubungkan ulang
             </>
           )}
         </Button>

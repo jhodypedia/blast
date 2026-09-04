@@ -118,8 +118,8 @@ export async function pairDeviceAction(
     if (!parsed.success) {
       return {
         status: "error",
-        message: "Check the pairing details and try again.",
-        fieldErrors: { phoneNumber: ["Enter a valid WhatsApp number"] },
+        message: "Periksa detail pairing lalu coba lagi.",
+        fieldErrors: { phoneNumber: ["Masukkan nomor WhatsApp yang valid"] },
       };
     }
 
@@ -149,7 +149,7 @@ export async function pairDeviceAction(
       status: "success",
       message:
         parsed.data.method === "QR"
-          ? "Scan the QR code with WhatsApp on your phone."
+          ? "Pindai QR Code dengan WhatsApp di ponsel Anda."
           : "Masukkan kode pairing di WhatsApp pada ponsel Anda.",
     };
   } catch (error) {
@@ -170,7 +170,7 @@ export async function deviceControlAction(
     });
 
     if (!parsed.success) {
-      return { status: "error", message: "That action is not available." };
+      return { status: "error", message: "Aksi tersebut tidak tersedia." };
     }
 
     switch (parsed.data.action) {
@@ -194,7 +194,7 @@ export async function deviceControlAction(
 
     revalidatePath("/dashboard/devices");
 
-    return { status: "success", message: "Device updated." };
+    return { status: "success", message: "Perangkat berhasil diperbarui." };
   } catch (error) {
     return toState(error);
   }

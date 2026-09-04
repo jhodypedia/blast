@@ -14,6 +14,7 @@ import {
 import {
   clearDeviceChallenge,
   releasePairing,
+  renewPairing,
   storeDeviceChallenge,
 } from "@/lib/device/challenge-store";
 
@@ -24,6 +25,12 @@ import {
  * only in Redis with a TTL. They are never written to the database, to logs, or
  * to any audit record (RULES.md §8, §16).
  */
+
+/**
+ * Lock window granted to the adapter's post-pairing socket rebuild (status 515),
+ * long enough for the bounded restart attempts to finish.
+ */
+const PAIRING_RESTART_TTL_SECONDS = 120;
 
 export async function processDeviceSession(
   data: DeviceSessionJobData,
@@ -93,15 +100,25 @@ export async function processDeviceSession(
           },
         });
 
-        if (["CONNECTED", "ERROR", "EXPIRED", "DISCONNECTED"].includes(update.state)) {
+        // `restarting` marks the mandatory post-pairing socket rebuild
+        // (WhatsApp status 515). The adapter owns that retry, so the pairing
+        // lock is held for the rebuild instead of being released, and no
+        // reconnect is scheduled. The challenge itself is already spent.
+        if (update.restarting) {
+          await clearDeviceChallenge(device.id);
+          await renewPairing(device.id, PAIRING_RESTART_TTL_SECONDS);
+        } else if (
+          ["CONNECTED", "ERROR", "EXPIRED", "DISCONNECTED"].includes(update.state)
+        ) {
           await clearDeviceChallenge(device.id);
           await releasePairing(device.id);
         }
 
         if (
+          !update.restarting &&
           update.state === "DISCONNECTED" &&
           !update.requiresReauth &&
-          (!data.pairing || update.errorCode === "DISCONNECT_515")
+          !data.pairing
         ) {
           const changed = await prisma.device.updateMany({
             where: { id: device.id, status: "DISCONNECTED" },

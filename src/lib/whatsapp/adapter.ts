@@ -32,6 +32,8 @@ import type {
 type SocketHandle = {
   socket: ReturnType<typeof makeWASocket>;
   state: DeviceConnectionState;
+  /** Set when `disconnect`/`logout` tore this handle down on purpose. */
+  disposed: boolean;
 };
 
 const sockets = new Map<string, SocketHandle>();
@@ -45,27 +47,63 @@ const QR_TTL_MS = 60_000;
 const PAIR_CODE_TTL_MS = 180_000;
 /** Upper bound for a single send; beyond this the outcome is ambiguous. */
 const SEND_TIMEOUT_MS = 45_000;
+/**
+ * WhatsApp closes the socket with `restartRequired` (515) as the final step of a
+ * successful pairing, and occasionally mid-session. The credentials it just
+ * issued are valid, so the only correct response is to rebuild the socket.
+ * Bounded so a server that keeps demanding restarts cannot spin forever.
+ */
+const MAX_RESTART_ATTEMPTS = 3;
+const RESTART_DELAY_MS = 1_000;
 
-async function connect(params: {
+type SessionParams = {
   deviceId: string;
   pairing?: PairingRequest;
   onChallenge?: (challenge: PairingChallenge) => void | Promise<void>;
   onUpdate?: (update: ConnectionUpdate) => void | Promise<void>;
-}): Promise<void> {
-  const log = logger("device");
-  const { deviceId } = params;
+};
 
-  const existing = sockets.get(deviceId);
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function connect(params: SessionParams): Promise<void> {
+  const existing = sockets.get(params.deviceId);
   if (existing?.state === "CONNECTED") {
     return;
   }
   if (existing) {
     // Replace a stale handshake so a new pairing request gets fresh callbacks.
-    await disconnect(deviceId);
+    await disconnect(params.deviceId);
   }
+
+  await openSocket(params, 0);
+}
+
+/**
+ * Builds one socket generation for a device.
+ *
+ * `restartAttempt` counts the 515 restarts already performed for this session.
+ * `end()` destroys the Baileys event emitter, so a restart cannot reuse the old
+ * socket: a brand new one is created from the persisted credentials, which makes
+ * `validateConnection` take the login path instead of registering again.
+ */
+async function openSocket(
+  params: SessionParams,
+  restartAttempt: number,
+): Promise<void> {
+  const log = logger("device");
+  const { deviceId } = params;
 
   const auth = await loadAuthState(deviceId);
   const { version } = await fetchLatestBaileysVersion();
+  // Set once the link-code handshake has completed; a second pair-code request
+  // on the same credentials would invalidate the session.
+  const credsRegistered = Boolean(
+    (auth.state.creds as { registered?: boolean }).registered,
+  );
 
   const socket = makeWASocket({
     version,
@@ -75,27 +113,55 @@ async function connect(params: {
     browser: ["PBlast", "Chrome", "1.0.0"],
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    // Keeps the library's QR rotation aligned with the TTL we advertise.
+    qrTimeout: QR_TTL_MS,
     logger: log as never,
   } as never);
 
-  const handle: SocketHandle = { socket, state: "CONNECTING" };
+  const handle: SocketHandle = { socket, state: "CONNECTING", disposed: false };
   sockets.set(deviceId, handle);
+
+  // Credential writes are serialised instead of fire-and-forget: the post-pair
+  // restart has to observe the credentials issued moments earlier, otherwise it
+  // reloads a pre-pairing snapshot and starts the handshake all over again.
+  let credsWrite: Promise<void> = Promise.resolve();
+  const persistCreds = (): Promise<void> => {
+    credsWrite = credsWrite
+      .then(() => auth.saveCreds())
+      .catch(() => {
+        log.error(
+          { event: "device.creds_persist_failed", deviceId },
+          "Failed to persist WhatsApp credentials",
+        );
+      });
+    return credsWrite;
+  };
 
   let pairCodeRequested = false;
 
   socket.ev.on("creds.update", () => {
-    void auth.saveCreds();
+    void persistCreds();
   });
 
   socket.ev.on("connection.update", (update: unknown) => {
     void (async () => {
-      const { connection, lastDisconnect, qr } = update as {
+      // A newer generation already owns this device: ignore the dead socket's
+      // trailing events so they cannot overwrite the live state.
+      if (sockets.get(deviceId) !== handle) {
+        return;
+      }
+
+      const { connection, lastDisconnect, qr, isNewLogin } = update as {
         connection?: string;
         lastDisconnect?: { error?: unknown };
         qr?: string;
+        isNewLogin?: boolean;
       };
 
-      if (qr && params.pairing?.method === "QR") {
+      // QR refs are pushed by WhatsApp for every unregistered handshake, pair
+      // code flows included. Surfacing one there would replace the code the user
+      // is waiting for, so a QR is only forwarded when it is what is expected.
+      if (qr && (!params.pairing || params.pairing.method === "QR")) {
         await params.onChallenge?.({
           method: "QR",
           qr,
@@ -103,10 +169,24 @@ async function connect(params: {
         });
       }
 
+      if (isNewLogin) {
+        // The device is linked and the challenge is spent. WhatsApp will now
+        // close the socket with 515; keep the session marked as in progress.
+        await persistCreds();
+        await params.onUpdate?.({
+          deviceId,
+          state: "CONNECTING",
+          errorCode: "PAIRED",
+          restarting: true,
+        });
+      }
+
       if (
         !pairCodeRequested &&
         params.pairing?.method === "PAIR_CODE" &&
-        connection === "connecting"
+        connection === "connecting" &&
+        restartAttempt === 0 &&
+        !credsRegistered
       ) {
         pairCodeRequested = true;
         try {
@@ -155,6 +235,56 @@ async function connect(params: {
             | undefined
         )?.output?.statusCode;
 
+        if (handle.disposed) {
+          // Deliberate teardown; the caller already owns the resulting state.
+          return;
+        }
+
+        const restartRequired = statusCode === DisconnectReason.restartRequired;
+        if (restartRequired && restartAttempt < MAX_RESTART_ATTEMPTS) {
+          // Mandatory post-pairing restart. Report progress instead of a
+          // disconnect so the pairing challenge and its lock are preserved.
+          sockets.delete(deviceId);
+          await params.onUpdate?.({
+            deviceId,
+            state: "CONNECTING",
+            errorCode: "RESTART_REQUIRED",
+            restarting: true,
+          });
+
+          log.info(
+            { event: "device.restart_required", deviceId, attempt: restartAttempt + 1 },
+            "Rebuilding WhatsApp socket after a restart-required close",
+          );
+
+          // The credentials issued during pairing must be on disk before the
+          // replacement socket reads them back.
+          await credsWrite;
+          await delay(RESTART_DELAY_MS);
+
+          if (sockets.has(deviceId)) {
+            // Something else claimed the device while we waited.
+            return;
+          }
+
+          try {
+            await openSocket(params, restartAttempt + 1);
+          } catch (error) {
+            log.error(
+              { event: "device.restart_failed", deviceId },
+              `Socket restart failed: ${
+                error instanceof Error ? error.name : "unknown"
+              }`,
+            );
+            await params.onUpdate?.({
+              deviceId,
+              state: "ERROR",
+              errorCode: "RESTART_FAILED",
+            });
+          }
+          return;
+        }
+
         const loggedOut = statusCode === DisconnectReason.loggedOut;
         handle.state = loggedOut ? "EXPIRED" : "DISCONNECTED";
         sockets.delete(deviceId);
@@ -167,7 +297,11 @@ async function connect(params: {
         await params.onUpdate?.({
           deviceId,
           state: handle.state,
-          ...(statusCode ? { errorCode: `DISCONNECT_${statusCode}` } : {}),
+          ...(restartRequired
+            ? { errorCode: "RESTART_EXHAUSTED" }
+            : statusCode
+              ? { errorCode: `DISCONNECT_${statusCode}` }
+              : {}),
           requiresReauth: loggedOut,
         });
       }
@@ -181,6 +315,7 @@ async function disconnect(deviceId: string): Promise<void> {
     return;
   }
   sockets.delete(deviceId);
+  handle.disposed = true;
   try {
     handle.socket.end(undefined);
   } catch {
@@ -193,6 +328,7 @@ async function logout(deviceId: string): Promise<void> {
   sockets.delete(deviceId);
 
   if (handle) {
+    handle.disposed = true;
     try {
       // The distribution's typings require an explicit argument here.
       await (handle.socket.logout as (msg?: string) => Promise<void>)(

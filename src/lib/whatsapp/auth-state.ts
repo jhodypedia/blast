@@ -1,6 +1,6 @@
 import "server-only";
 
-import { initAuthCreds } from "@rexxhayanasi/elaina-baileys";
+import { initAuthCreds, proto } from "@rexxhayanasi/elaina-baileys";
 
 import { prisma } from "@/lib/db/prisma";
 import { decryptJson, encryptJson } from "@/lib/security/crypto";
@@ -61,6 +61,23 @@ const CREDS_KEY = "creds";
 
 function stateKey(type: string, id: string): string {
   return `${type}:${id}`;
+}
+
+/**
+ * Rebuilds the protobuf wrapper Baileys expects for a stored value.
+ *
+ * App-state sync keys are consumed as `AppStateSyncKeyData` instances, not as
+ * plain objects. Round-tripping them through JSON drops the prototype, so the
+ * class has to be reconstructed on read exactly as the library's own file-based
+ * store does; otherwise app-state sync fails immediately after pairing.
+ */
+function reviveStateValue(type: string, value: unknown): unknown {
+  if (type === "app-state-sync-key" && value) {
+    return proto.Message.AppStateSyncKeyData.fromObject(
+      value as Record<string, unknown>,
+    );
+  }
+  return value;
 }
 
 export type BaileysAuthState = {
@@ -128,7 +145,7 @@ export async function loadAuthState(
           const result: Record<string, unknown> = {};
           for (const row of rows) {
             const id = row.stateKey.slice(type.length + 1);
-            result[id] = decode<unknown>(row.ciphertext);
+            result[id] = reviveStateValue(type, decode<unknown>(row.ciphertext));
           }
           return result;
         },

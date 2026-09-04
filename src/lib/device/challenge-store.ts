@@ -21,6 +21,17 @@ export async function claimPairing(deviceId: string, ttlSeconds: number): Promis
   return result === "OK";
 }
 
+/**
+ * Extends an existing pairing lock.
+ *
+ * WhatsApp forces a socket rebuild right after a successful pairing (status
+ * 515). That rebuild can outlive the original challenge TTL, so the lock is
+ * refreshed to keep a concurrent pairing request from interrupting it.
+ */
+export async function renewPairing(deviceId: string, ttlSeconds: number): Promise<void> {
+  await redis().set(`${PAIRING_LOCK_PREFIX}${deviceId}`, "1", "EX", ttlSeconds);
+}
+
 export async function releasePairing(deviceId: string): Promise<void> {
   await redis().del(`${PAIRING_LOCK_PREFIX}${deviceId}`);
 }
