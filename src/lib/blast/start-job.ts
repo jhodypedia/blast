@@ -10,6 +10,7 @@ import {
   forbidden,
   invalidState,
   notFound,
+  toAppError,
   validationError,
 } from "@/lib/errors";
 import { getSetting } from "@/lib/settings/service";
@@ -325,5 +326,122 @@ export async function startBlastJob(
     blastJobId: created.id,
     quotaTotal: created.quotaTotal,
     deduplicated: false,
+  };
+}
+
+export type BulkDeviceOutcome = {
+  deviceId: string;
+  /** Operator-visible `device-{userId}-{uuid}` identifier. */
+  devicePublicId: string;
+  deviceLabel: string;
+} & (
+  | { started: true; blastJobId: string; quotaTotal: number; deduplicated: boolean }
+  | { started: false; reason: string }
+);
+
+export type StartBlastJobsForAllDevicesResult = {
+  outcomes: BulkDeviceOutcome[];
+  startedCount: number;
+  quotaTotal: number;
+};
+
+/**
+ * Starts one blast job per connected device of the caller.
+ *
+ * This is a thin fan-out over `startBlastJob`: every eligibility, quota,
+ * concurrency and speed rule is still evaluated per device by that function, so
+ * the bulk path can never grant a permission the single path refuses (RULES.md
+ * §11, §13). Devices are processed sequentially because recipient allocation
+ * takes row locks on the shared target list; running them in parallel would only
+ * make the jobs contend with each other.
+ *
+ * A device that cannot start does not abort the batch — its reason is returned so
+ * the operator sees exactly which slots ran.
+ */
+export async function startBlastJobsForAllDevices(params: {
+  /** From the verified session, never the request body. */
+  userId: string;
+  campaignId: string;
+  speedSeconds: number;
+  acceptedTerms: boolean;
+}): Promise<StartBlastJobsForAllDevicesResult> {
+  const log = logger("blast");
+
+  const devices = await prisma.device.findMany({
+    where: { userId: params.userId, deletedAt: null, status: "CONNECTED" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, publicId: true, label: true },
+  });
+
+  if (devices.length === 0) {
+    throw invalidState("Connect at least one device before starting a blast.");
+  }
+
+  const outcomes: BulkDeviceOutcome[] = [];
+
+  for (const device of devices) {
+    const identity = {
+      deviceId: device.id,
+      devicePublicId: device.publicId,
+      deviceLabel: device.label,
+    };
+
+    try {
+      const result = await startBlastJob({
+        userId: params.userId,
+        campaignId: params.campaignId,
+        deviceId: device.id,
+        speedSeconds: params.speedSeconds,
+        acceptedTerms: params.acceptedTerms,
+      });
+
+      outcomes.push({
+        ...identity,
+        started: true,
+        blastJobId: result.blastJobId,
+        quotaTotal: result.quotaTotal,
+        deduplicated: result.deduplicated,
+      });
+    } catch (error) {
+      // Only the safe, user-facing message is surfaced; internals stay in logs.
+      const appError = toAppError(error);
+
+      if (appError.code === "INTERNAL_ERROR") {
+        log.error(
+          {
+            event: "blast.bulk_device_failed",
+            userId: params.userId,
+            campaignId: params.campaignId,
+            deviceId: device.id,
+            detail: appError.internalMessage,
+          },
+          "Bulk blast failed for one device",
+        );
+      }
+
+      outcomes.push({ ...identity, started: false, reason: appError.message });
+    }
+  }
+
+  const started = outcomes.filter(
+    (outcome): outcome is Extract<BulkDeviceOutcome, { started: true }> =>
+      outcome.started,
+  );
+
+  log.info(
+    {
+      event: "blast.bulk_started",
+      userId: params.userId,
+      campaignId: params.campaignId,
+      devices: devices.length,
+      started: started.length,
+    },
+    "Bulk blast dispatched",
+  );
+
+  return {
+    outcomes,
+    startedCount: started.length,
+    quotaTotal: started.reduce((sum, outcome) => sum + outcome.quotaTotal, 0),
   };
 }

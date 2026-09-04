@@ -3,7 +3,10 @@ import "server-only";
 import { z } from "zod";
 
 import { cuidSchema, optionalTrimmedString } from "@/lib/validation/common";
-import { ALLOWED_SPEED_SECONDS } from "@/lib/constants";
+import {
+  ALLOWED_SPEED_SECONDS,
+  USER_DELIVERY_LOG_STATUSES,
+} from "@/lib/constants";
 
 /**
  * Device and blast-job schemas for USER-facing mutations.
@@ -58,6 +61,22 @@ export const startBlastSchema = z.object({
 });
 
 export type StartBlastFormInput = z.infer<typeof startBlastSchema>;
+
+/** Bulk start: the device set comes from the server, never the client. */
+export const startBlastAllSchema = z.object({
+  campaignId: cuidSchema,
+  speedSeconds: z.coerce.number().pipe(speedSchema),
+  acceptedTerms: z.boolean().default(false),
+});
+
+export type StartBlastAllInput = z.infer<typeof startBlastAllSchema>;
+
+export const deliveryLogFilterSchema = z.object({
+  status: z.enum(USER_DELIVERY_LOG_STATUSES).optional(),
+  deviceId: cuidSchema.optional(),
+});
+
+export type DeliveryLogFilterInput = z.infer<typeof deliveryLogFilterSchema>;
 
 export const blastJobActionSchema = z.object({
   blastJobId: cuidSchema,

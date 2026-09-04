@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth/session";
-import { startBlastJob } from "@/lib/blast/start-job";
+import {
+  startBlastJob,
+  startBlastJobsForAllDevices,
+} from "@/lib/blast/start-job";
 import {
   pauseBlastJob,
   resumeBlastJob,
@@ -11,6 +14,7 @@ import {
 } from "@/lib/blast/lifecycle";
 import {
   blastJobActionSchema,
+  startBlastAllSchema,
   startBlastSchema,
 } from "@/lib/validation/device";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
@@ -87,7 +91,6 @@ export async function startBlastAction(
     });
 
     revalidatePath("/dashboard/jobs");
-    revalidatePath("/dashboard/campaigns");
 
     return {
       status: "success",
@@ -95,6 +98,75 @@ export async function startBlastAction(
         ? "This job is already running."
         : `Job queued for ${result.quotaTotal} recipients.`,
       blastJobId: result.blastJobId,
+    };
+  } catch (error) {
+    return toState(error);
+  }
+}
+
+/**
+ * Starts one job on every connected device of the caller.
+ *
+ * The device set is resolved server-side from the session, so the client cannot
+ * widen the fan-out. Partial success is reported rather than thrown, because a
+ * single device hitting its quota must not hide the devices that did start.
+ */
+export async function startBlastAllDevicesAction(
+  _previous: BlastActionState,
+  formData: FormData,
+): Promise<BlastActionState> {
+  try {
+    const actor = await requireUser();
+
+    const parsed = startBlastAllSchema.safeParse({
+      campaignId: formData.get("campaignId"),
+      speedSeconds: formData.get("speedSeconds"),
+      acceptedTerms: formData.get("acceptedTerms") === "on",
+    });
+
+    if (!parsed.success) {
+      return {
+        status: "error",
+        message: "Check the campaign and speed, then try again.",
+        fieldErrors: {
+          speedSeconds: ["Choose an allowed sending speed"],
+        },
+      };
+    }
+
+    await enforceRateLimit(RATE_LIMITS.blastStart, actor.id);
+
+    const result = await startBlastJobsForAllDevices({
+      userId: actor.id,
+      campaignId: parsed.data.campaignId,
+      speedSeconds: parsed.data.speedSeconds,
+      acceptedTerms: parsed.data.acceptedTerms,
+    });
+
+    revalidatePath("/dashboard/jobs");
+
+    if (result.startedCount === 0) {
+      const firstReason = result.outcomes.find(
+        (outcome) => !outcome.started,
+      );
+
+      return {
+        status: "error",
+        message:
+          firstReason && !firstReason.started
+            ? firstReason.reason
+            : "No device could start a blast right now.",
+      };
+    }
+
+    const skipped = result.outcomes.length - result.startedCount;
+
+    return {
+      status: "success",
+      message:
+        skipped > 0
+          ? `${result.startedCount} perangkat mulai mengirim ke ${result.quotaTotal} nomor. ${skipped} perangkat dilewati.`
+          : `${result.startedCount} perangkat mulai mengirim ke ${result.quotaTotal} nomor.`,
     };
   } catch (error) {
     return toState(error);

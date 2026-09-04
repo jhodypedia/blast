@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { prisma } from "@/lib/db/prisma";
 import {
   conflict,
@@ -30,14 +32,22 @@ import {
 
 export type DeviceSummary = {
   id: string;
+  /** Operator-visible identifier: `device-{userId}-{uuid}`. */
+  publicId: string;
   label: string;
   status: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "EXPIRED" | "ERROR";
   /** Masked; the full number is never sent to the browser. */
   maskedNumber: string | null;
   lastConnectedAt: Date | null;
   lastSeenAt: Date | null;
+  lastErrorCode: string | null;
   createdAt: Date;
 };
+
+/** Builds the operator-visible device identifier (RULES.md §8, §16). */
+export function buildDevicePublicId(userId: string): string {
+  return `device-${userId}-${randomUUID()}`;
+}
 
 /** Lists the caller's own devices. */
 export async function listUserDevices(userId: string): Promise<DeviceSummary[]> {
@@ -46,17 +56,20 @@ export async function listUserDevices(userId: string): Promise<DeviceSummary[]> 
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
+      publicId: true,
       label: true,
       status: true,
       phoneNumber: true,
       lastConnectedAt: true,
       lastSeenAt: true,
+      lastErrorCode: true,
       createdAt: true,
     },
   });
 
   return devices.map((device) => ({
     id: device.id,
+    publicId: device.publicId,
     label: device.label,
     status: device.status,
     maskedNumber: device.phoneNumber
@@ -64,6 +77,7 @@ export async function listUserDevices(userId: string): Promise<DeviceSummary[]> 
       : null,
     lastConnectedAt: device.lastConnectedAt,
     lastSeenAt: device.lastSeenAt,
+    lastErrorCode: device.lastErrorCode,
     createdAt: device.createdAt,
   }));
 }
@@ -76,7 +90,7 @@ export async function listUserDevices(userId: string): Promise<DeviceSummary[]> 
  */
 export async function createDevice(params: {
   userId: string;
-}): Promise<{ deviceId: string }> {
+}): Promise<{ deviceId: string; publicId: string }> {
   const maxDevices = await getSetting(SETTING_KEYS.maxDevicesPerUser);
 
   return prisma.$transaction(
@@ -94,13 +108,14 @@ export async function createDevice(params: {
       const device = await tx.device.create({
         data: {
           userId: params.userId,
+          publicId: buildDevicePublicId(params.userId),
           label: `Perangkat ${existing + 1}`,
           status: "DISCONNECTED",
         },
-        select: { id: true },
+        select: { id: true, publicId: true },
       });
 
-      return { deviceId: device.id };
+      return { deviceId: device.id, publicId: device.publicId };
     },
     { isolationLevel: "Serializable", timeout: 10_000 },
   );

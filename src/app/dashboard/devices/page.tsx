@@ -110,7 +110,7 @@ export default async function DevicesPage() {
           title="Tambah perangkat"
           description={
             atCapacity
-              ? `You have reached the limit of ${maxDevices} devices. Remove one to add another.`
+              ? `Batas ${maxDevices} perangkat sudah tercapai. Hapus satu perangkat untuk menambah yang baru.`
               : `${devices.length} dari ${maxDevices} slot digunakan.`
           }
           icon={<PlusCircle className="size-5" />}
@@ -144,11 +144,13 @@ export default async function DevicesPage() {
                   pairCodeEnabled={pairCodeEnabled}
                   device={{
                     id: device.id,
+                    publicId: device.publicId,
                     label: device.label,
                     status: device.status,
                     maskedNumber: device.maskedNumber,
                     lastConnectedAt:
                       device.lastConnectedAt?.toISOString() ?? null,
+                    lastErrorCode: device.lastErrorCode,
                   }}
                 />
               </StaggerItem>

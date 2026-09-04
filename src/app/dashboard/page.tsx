@@ -61,9 +61,9 @@ export default async function DashboardPage() {
         description="Your devices, available campaigns and earnings at a glance."
         actions={
           <Button asChild>
-            <Link href="/dashboard/campaigns">
-              <Megaphone aria-hidden="true" />
-              Browse campaigns
+            <Link href="/dashboard/jobs">
+              <Send aria-hidden="true" />
+              Open blast
             </Link>
           </Button>
         }
@@ -127,8 +127,8 @@ export default async function DashboardPage() {
               description="Pick an available campaign to start your first blast job."
               action={
                 <Button asChild variant="outline" size="sm">
-                  <Link href="/dashboard/campaigns">
-                    Browse campaigns
+                  <Link href="/dashboard/jobs">
+                    Open blast
                     <ArrowRight aria-hidden="true" />
                   </Link>
                 </Button>

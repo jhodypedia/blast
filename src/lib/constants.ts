@@ -26,6 +26,40 @@ export const RECIPIENT_HEARTBEAT_MS = 20_000;
 export const MAX_DEVICE_RECONNECT_ATTEMPTS = 5;
 export const DEVICE_RECONNECT_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000, 120_000] as const;
 
+/**
+ * Error code recorded on `Device.lastErrorCode` when the provider refuses the
+ * session or a send with a permanent authorisation failure.
+ *
+ * A restricted number must not be retried or reconnected automatically: the
+ * session is torn down, the stored credentials are wiped and the operator is
+ * told to stop sending (RULES.md §8, §13).
+ */
+export const SHADOW_BAN_ERROR_CODE = "SHADOW_BAN";
+
+/** Provider status codes that indicate the number itself was restricted. */
+export const SHADOW_BAN_STATUS_CODES = [401, 403] as const;
+
+/**
+ * How much delivery-log history an operator may read.
+ *
+ * Older rows stay in the database for admin auditing and are removed by the
+ * retention sweep; the operator view is always a rolling 24-hour window.
+ */
+export const USER_DELIVERY_LOG_WINDOW_HOURS = 24;
+
+/** Maximum delivery-log rows returned to one operator request. */
+export const USER_DELIVERY_LOG_PAGE_SIZE = 100;
+
+/** Delivery statuses an operator may filter their own log by. */
+export const USER_DELIVERY_LOG_STATUSES = [
+  "SENT",
+  "FAILED",
+  "RETRYABLE_FAILED",
+  "UNKNOWN",
+] as const;
+
+export type UserDeliveryLogStatus = (typeof USER_DELIVERY_LOG_STATUSES)[number];
+
 /** How long a `SENDING` row may stay untouched before reconciliation. */
 export const SENDING_STALE_MS = 5 * 60_000;
 

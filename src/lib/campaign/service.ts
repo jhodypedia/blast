@@ -409,6 +409,10 @@ export type UserCampaignSummary = {
   deviceModePolicy: "SINGLE_DEVICE" | "ALL_DEVICES";
   scheduledStartAt: Date;
   scheduledEndAt: Date;
+  /** Numbers the admin loaded into this campaign's target list. */
+  targetTotal: number;
+  /** Numbers no operator has claimed yet. Aggregate only, never the numbers. */
+  targetAvailable: number;
   /** True when the operator may start a job right now. */
   startable: boolean;
 };
@@ -443,6 +447,7 @@ export async function listCampaignsForUser(
       id: true,
       name: true,
       description: true,
+      targetListId: true,
       payoutPerSend: true,
       currency: true,
       quotaPerUser: true,
@@ -459,25 +464,55 @@ export async function listCampaignsForUser(
     return [];
   }
 
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+
   // Quota consumption is counted from authoritative recipient rows, never a
-  // cached counter on the job.
-  const used = await prisma.campaignRecipient.groupBy({
-    by: ["campaignId"],
-    where: {
-      campaignId: { in: campaigns.map((campaign) => campaign.id) },
-      blastJob: { userId },
-      status: { not: "CANCELLED" },
-    },
-    _count: { _all: true },
-  });
+  // cached counter on the job. The allocation figures are aggregates over the
+  // same rows plus the target list size, so no number is ever projected.
+  const [used, claimed, targetTotals] = await Promise.all([
+    prisma.campaignRecipient.groupBy({
+      by: ["campaignId"],
+      where: {
+        campaignId: { in: campaignIds },
+        blastJob: { userId },
+        status: { not: "CANCELLED" },
+      },
+      _count: { _all: true },
+    }),
+    prisma.campaignRecipient.groupBy({
+      by: ["campaignId"],
+      where: { campaignId: { in: campaignIds } },
+      _count: { _all: true },
+    }),
+    prisma.targetNumber.groupBy({
+      by: ["targetListId"],
+      where: {
+        targetListId: {
+          in: [...new Set(campaigns.map((campaign) => campaign.targetListId))],
+        },
+      },
+      _count: { _all: true },
+    }),
+  ]);
 
   const usedByCampaign = new Map(
     used.map((row) => [row.campaignId, row._count._all]),
+  );
+  const claimedByCampaign = new Map(
+    claimed.map((row) => [row.campaignId, row._count._all]),
+  );
+  const totalByTargetList = new Map(
+    targetTotals.map((row) => [row.targetListId, row._count._all]),
   );
 
   return campaigns.map((campaign) => {
     const quotaUsed = usedByCampaign.get(campaign.id) ?? 0;
     const quotaRemaining = Math.max(campaign.quotaPerUser - quotaUsed, 0);
+    const targetTotal = totalByTargetList.get(campaign.targetListId) ?? 0;
+    const targetAvailable = Math.max(
+      targetTotal - (claimedByCampaign.get(campaign.id) ?? 0),
+      0,
+    );
 
     return {
       id: campaign.id,
@@ -496,7 +531,9 @@ export async function listCampaignsForUser(
       deviceModePolicy: campaign.deviceModePolicy,
       scheduledStartAt: campaign.scheduledStartAt,
       scheduledEndAt: campaign.scheduledEndAt,
-      startable: quotaRemaining > 0,
+      targetTotal,
+      targetAvailable,
+      startable: quotaRemaining > 0 && targetAvailable > 0,
     };
   });
 }

@@ -79,6 +79,7 @@ export async function createDeliveryFixture(options?: {
     data: {
       id: deviceId,
       userId,
+      publicId: `device-${userId}-${randomUUID()}`,
       label: "Integration Device",
       status: "CONNECTED",
       phoneNumber: `62899${digits.slice(0, 7)}`,

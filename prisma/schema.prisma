@@ -189,6 +189,11 @@ model Device {
   label  String
   status DeviceStatus @default(DISCONNECTED)
 
+  /// Operator-visible identifier in the form `device-{userId}-{uuid}`. Assigned
+  /// once when the slot is created and never reused, so logs and support tickets
+  /// can reference a device without leaking the internal primary key.
+  publicId String @unique @db.VarChar(191)
+
   /// Canonical E.164 number (digits only, no `+`) reported by WhatsApp once paired.
   phoneNumber String? @db.VarChar(24)
 
@@ -204,9 +209,10 @@ model Device {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  authStates DeviceAuthState[]
-  blastJobs  BlastJob[]
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authStates   DeviceAuthState[]
+  blastJobs    BlastJob[]
+  deliveryLogs DeliveryLog[]
 
   @@unique([userId, phoneNumber])
   @@index([userId, status])
@@ -666,6 +672,9 @@ model SecurityLog {
 model DeliveryLog {
   id          BigInt   @id @default(autoincrement())
   blastJobId  String
+  /// Sending device, denormalised from the job so per-device logs can be read
+  /// without joining. Nullable for rows written before per-device tracking.
+  deviceId    String?
   recipientId BigInt
   recipientRef String  @db.VarChar(64)
   event       String   @db.VarChar(32)
@@ -675,10 +684,13 @@ model DeliveryLog {
   createdAt   DateTime @default(now())
 
   blastJob BlastJob @relation(fields: [blastJobId], references: [id], onDelete: Cascade)
+  device   Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
   @@index([blastJobId, createdAt])
   @@index([createdAt])
   @@index([recipientId])
+  @@index([deviceId, createdAt])
+  @@index([status, createdAt])
 }
 
 /// Operational log for worker/queue events surfaced in the admin ops view.

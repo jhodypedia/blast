@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import {
   LayoutDashboard,
-  Megaphone,
   Send,
   Smartphone,
   UserCog,
@@ -16,6 +15,9 @@ import { AppShell, type NavItem } from "@/components/layout/app-shell";
  *
  * The session is re-read on the server for every request; the proxy gate is only
  * the first line of defence (RULES.md §5).
+ *
+ * Campaign management is ADMIN-only, so the operator navigation exposes exactly
+ * five destinations and no campaign entry (RULES.md §6).
  */
 
 const NAV: NavItem[] = [
@@ -25,19 +27,14 @@ const NAV: NavItem[] = [
     icon: <LayoutDashboard className="size-4 text-primary" />,
   },
   {
+    href: "/dashboard/jobs",
+    label: "Blast",
+    icon: <Send className="size-4 text-primary" />,
+  },
+  {
     href: "/dashboard/devices",
     label: "Devices",
     icon: <Smartphone className="size-4 text-success" />,
-  },
-  {
-    href: "/dashboard/campaigns",
-    label: "Campaigns",
-    icon: <Megaphone className="size-4 text-info" />,
-  },
-  {
-    href: "/dashboard/jobs",
-    label: "Blast jobs",
-    icon: <Send className="size-4 text-primary" />,
   },
   {
     href: "/dashboard/wallet",

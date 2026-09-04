@@ -3,8 +3,10 @@
 import { useActionState, useEffect, useState } from "react";
 import {
   Check,
+  Fingerprint,
   Link2Off,
   RefreshCw,
+  ShieldAlert,
   Smartphone,
   Trash2,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import {
   deviceControlAction,
   type DeviceActionState,
 } from "@/app/actions/devices";
+import { SHADOW_BAN_ERROR_CODE } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,10 +25,13 @@ import { DevicePairingModal } from "@/components/devices/device-pairing-modal";
 
 export type DeviceCardData = {
   id: string;
+  /** Operator-visible `device-{userId}-{uuid}` identifier. */
+  publicId: string;
   label: string;
   status: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "EXPIRED" | "ERROR";
   maskedNumber: string | null;
   lastConnectedAt: string | null;
+  lastErrorCode: string | null;
 };
 
 const initialState: DeviceActionState = { status: "idle" };
@@ -79,6 +85,7 @@ export function DeviceCard({
   }, [controlState]);
 
   const busy = controlPending;
+  const shadowBanned = device.lastErrorCode === SHADOW_BAN_ERROR_CODE;
 
   return (
     <motion.div
@@ -105,10 +112,34 @@ export function DeviceCard({
                 </p>
               </div>
             </div>
-            <Badge variant={STATUS_VARIANT[device.status]}>
-              {STATUS_LABEL[device.status]}
+            <Badge variant={shadowBanned ? "danger" : STATUS_VARIANT[device.status]}>
+              {shadowBanned ? "Shadow ban" : STATUS_LABEL[device.status]}
             </Badge>
           </div>
+
+          <div className="flex items-center gap-2 border-4 border-black bg-surface-strong px-3 py-2">
+            <Fingerprint className="size-4 shrink-0 text-info" aria-hidden="true" />
+            <span className="shrink-0 text-[0.625rem] font-black uppercase tracking-wide text-foreground">
+              ID
+            </span>
+            <code
+              className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] font-bold"
+              title={device.publicId}
+            >
+              {device.publicId}
+            </code>
+          </div>
+
+          {shadowBanned ? (
+            <div className="flex items-start gap-2 border-4 border-black bg-danger px-3 py-2 text-xs font-black uppercase text-danger-foreground">
+              <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span className="normal-case">
+                WhatsApp membatasi nomor ini, jadi sesi otomatis diputus dan
+                dihapus. Kurangi volume pengiriman lalu hubungkan ulang setelah
+                nomor kembali normal.
+              </span>
+            </div>
+          ) : null}
 
           {device.status !== "CONNECTED" ? (
             <Button type="button" className="w-full" onClick={() => setPairingOpen(true)} disabled={busy}>

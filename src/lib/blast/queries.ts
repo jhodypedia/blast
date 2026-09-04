@@ -3,6 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { forbidden, notFound } from "@/lib/errors";
 import {
+  USER_DELIVERY_LOG_PAGE_SIZE,
+  USER_DELIVERY_LOG_WINDOW_HOURS,
+  type UserDeliveryLogStatus,
+} from "@/lib/constants";
+import {
   blastJobProgress,
   completionPercent,
   type ProgressCounts,
@@ -19,7 +24,10 @@ export type UserJobSummary = {
   id: string;
   campaignId: string;
   campaignName: string;
+  deviceId: string;
   deviceLabel: string;
+  /** Operator-visible `device-{userId}-{uuid}` identifier. */
+  devicePublicId: string;
   status:
     | "PENDING"
     | "QUEUED"
@@ -57,6 +65,7 @@ export async function listUserJobs(
     select: {
       id: true,
       campaignId: true,
+      deviceId: true,
       status: true,
       speedSeconds: true,
       quotaTotal: true,
@@ -66,7 +75,7 @@ export async function listUserJobs(
       createdAt: true,
       finishedAt: true,
       campaign: { select: { name: true } },
-      device: { select: { label: true } },
+      device: { select: { label: true, publicId: true } },
     },
   });
 
@@ -78,7 +87,9 @@ export async function listUserJobs(
         id: job.id,
         campaignId: job.campaignId,
         campaignName: job.campaign.name,
+        deviceId: job.deviceId,
         deviceLabel: job.device.label,
+        devicePublicId: job.device.publicId,
         status: job.status,
         speedSeconds: job.speedSeconds,
         quotaTotal: job.quotaTotal,
@@ -113,6 +124,7 @@ export async function getUserJobDetail(params: {
       id: true,
       userId: true,
       campaignId: true,
+      deviceId: true,
       status: true,
       speedSeconds: true,
       quotaTotal: true,
@@ -122,7 +134,7 @@ export async function getUserJobDetail(params: {
       createdAt: true,
       finishedAt: true,
       campaign: { select: { name: true } },
-      device: { select: { label: true } },
+      device: { select: { label: true, publicId: true } },
     },
   });
 
@@ -154,7 +166,9 @@ export async function getUserJobDetail(params: {
       id: job.id,
       campaignId: job.campaignId,
       campaignName: job.campaign.name,
+      deviceId: job.deviceId,
       deviceLabel: job.device.label,
+      devicePublicId: job.device.publicId,
       status: job.status,
       speedSeconds: job.speedSeconds,
       quotaTotal: job.quotaTotal,
@@ -168,4 +182,134 @@ export async function getUserJobDetail(params: {
     },
     events: logs,
   };
+}
+
+/** Delivery statuses an operator may filter the log by. */
+export type { UserDeliveryLogStatus } from "@/lib/constants";
+
+export type DeviceBlastStatus = {
+  deviceId: string;
+  devicePublicId: string;
+  deviceLabel: string;
+  deviceStatus: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "EXPIRED" | "ERROR";
+  lastErrorCode: string | null;
+  /** Live job on this device, if any. */
+  jobId: string | null;
+  jobStatus: string | null;
+  quotaTotal: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  percent: number;
+};
+
+/**
+ * Per-device delivery status for the operator's monitor panel.
+ *
+ * Devices are the primary rows so a slot with no job still appears; counts come
+ * from the recipient rows of that device's most recent job.
+ */
+export async function listDeviceBlastStatus(
+  userId: string,
+): Promise<DeviceBlastStatus[]> {
+  const devices = await prisma.device.findMany({
+    where: { userId, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      publicId: true,
+      label: true,
+      status: true,
+      lastErrorCode: true,
+      blastJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, status: true, quotaTotal: true },
+      },
+    },
+  });
+
+  return Promise.all(
+    devices.map(async (device) => {
+      const job = device.blastJobs[0] ?? null;
+      const progress = job ? await blastJobProgress(job.id) : null;
+
+      return {
+        deviceId: device.id,
+        devicePublicId: device.publicId,
+        deviceLabel: device.label,
+        deviceStatus: device.status,
+        lastErrorCode: device.lastErrorCode,
+        jobId: job?.id ?? null,
+        jobStatus: job?.status ?? null,
+        quotaTotal: job?.quotaTotal ?? 0,
+        sent: progress?.sent ?? 0,
+        failed: progress?.failed ?? 0,
+        pending: progress ? progress.pending + progress.inFlight : 0,
+        percent: progress ? completionPercent(progress) : 0,
+      };
+    }),
+  );
+}
+
+export type UserDeliveryLogRow = {
+  id: string;
+  createdAt: Date;
+  /** Operator-visible device id; null for rows written before per-device tracking. */
+  devicePublicId: string | null;
+  deviceLabel: string | null;
+  /** Sanitised, non-reversible recipient reference (RULES.md §16). */
+  recipientRef: string;
+  status: string;
+  event: string;
+  detail: string | null;
+};
+
+/**
+ * Reads the caller's delivery log for the rolling operator window.
+ *
+ * The window is enforced here rather than by deleting rows, so admin retention
+ * stays independent of what an operator can see. Ownership is scoped through the
+ * job relation, so no cross-tenant row can be returned.
+ */
+export async function listUserDeliveryLog(params: {
+  userId: string;
+  status?: UserDeliveryLogStatus;
+  deviceId?: string;
+  limit?: number;
+}): Promise<UserDeliveryLogRow[]> {
+  const since = new Date(
+    Date.now() - USER_DELIVERY_LOG_WINDOW_HOURS * 60 * 60 * 1000,
+  );
+
+  const rows = await prisma.deliveryLog.findMany({
+    where: {
+      blastJob: { userId: params.userId },
+      createdAt: { gte: since },
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.deviceId ? { deviceId: params.deviceId } : {}),
+    },
+    orderBy: { id: "desc" },
+    take: Math.min(params.limit ?? USER_DELIVERY_LOG_PAGE_SIZE, USER_DELIVERY_LOG_PAGE_SIZE),
+    select: {
+      id: true,
+      createdAt: true,
+      recipientRef: true,
+      status: true,
+      event: true,
+      detail: true,
+      device: { select: { label: true, publicId: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id.toString(),
+    createdAt: row.createdAt,
+    devicePublicId: row.device?.publicId ?? null,
+    deviceLabel: row.device?.label ?? null,
+    recipientRef: row.recipientRef,
+    status: row.status,
+    event: row.event,
+    detail: row.detail,
+  }));
 }

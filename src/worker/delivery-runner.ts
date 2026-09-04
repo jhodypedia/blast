@@ -250,6 +250,7 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
         await prisma.deliveryLog.create({
           data: {
             blastJobId,
+            deviceId: context.deviceId,
             recipientId: recipient.id,
             recipientRef: recipient.recipientRef,
             event: "SEND_ATTEMPT",
