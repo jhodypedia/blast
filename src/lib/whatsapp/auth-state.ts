@@ -151,39 +151,52 @@ export async function loadAuthState(
         },
 
         async set(data) {
-          const operations: Array<{ key: string; ciphertext: string | null }> = [];
+          const removals: string[] = [];
+          const writes: Array<{ stateKey: string; ciphertext: string }> = [];
 
           for (const [type, entries] of Object.entries(data)) {
             for (const [id, value] of Object.entries(entries)) {
-              operations.push({
-                key: stateKey(type, id),
-                ciphertext: value == null ? null : encode(value),
-              });
+              const key = stateKey(type, id);
+              if (value == null) {
+                removals.push(key);
+              } else {
+                writes.push({ stateKey: key, ciphertext: encode(value) });
+              }
             }
           }
 
-          if (operations.length === 0) {
+          if (removals.length === 0 && writes.length === 0) {
             return;
           }
 
+          // Baileys hands over a whole key set at once (30 pre-keys on the very
+          // first registration). One upsert per key costs three round trips on
+          // MySQL, which overran the 5s default transaction budget and aborted
+          // pairing, so the batch collapses into a delete plus one multi-row
+          // insert. Rewritten keys are deleted first, which also gives the
+          // insert a clean slate instead of needing upsert semantics.
+          const touchedKeys = [
+            ...removals,
+            ...writes.map((write) => write.stateKey),
+          ];
+
           await prisma.$transaction(
-            operations.map((operation) =>
-              operation.ciphertext === null
-                ? prisma.deviceAuthState.deleteMany({
-                    where: { deviceId, stateKey: operation.key },
-                  })
-                : prisma.deviceAuthState.upsert({
-                    where: {
-                      deviceId_stateKey: { deviceId, stateKey: operation.key },
-                    },
-                    create: {
-                      deviceId,
-                      stateKey: operation.key,
-                      ciphertext: operation.ciphertext,
-                    },
-                    update: { ciphertext: operation.ciphertext },
-                  }),
-            ),
+            async (tx) => {
+              await tx.deviceAuthState.deleteMany({
+                where: { deviceId, stateKey: { in: touchedKeys } },
+              });
+
+              if (writes.length > 0) {
+                await tx.deviceAuthState.createMany({
+                  data: writes.map((write) => ({
+                    deviceId,
+                    stateKey: write.stateKey,
+                    ciphertext: write.ciphertext,
+                  })),
+                });
+              }
+            },
+            { timeout: 15_000 },
           );
         },
       },

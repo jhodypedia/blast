@@ -36,6 +36,25 @@ type SocketHandle = {
   disposed: boolean;
 };
 
+/** The subset of the Baileys credential blob this adapter inspects. */
+type StoredCreds = {
+  /** Set only by the link-code (pair code) handshake. */
+  registered?: boolean;
+  /** Signed device identity; issued by both pairing flows on success. */
+  account?: unknown;
+  me?: { id?: string };
+};
+
+/**
+ * True once WhatsApp has linked this session, by either pairing flow.
+ *
+ * `registered` is set by the link-code handshake only, so QR-paired sessions are
+ * recognised through the signed device identity instead.
+ */
+function isLinked(creds: StoredCreds): boolean {
+  return Boolean(creds.registered || creds.account);
+}
+
 const sockets = new Map<string, SocketHandle>();
 
 /** Converts a canonical number to a WhatsApp JID. */
@@ -97,13 +116,31 @@ async function openSocket(
   const log = logger("device");
   const { deviceId } = params;
 
-  const auth = await loadAuthState(deviceId);
+  let auth = await loadAuthState(deviceId);
+  // A linked session logs straight back in; requesting a pair code on it would
+  // overwrite the identity WhatsApp issued and invalidate the session.
+  let credsLinked = isLinked(auth.state.creds as StoredCreds);
+
+  // `requestPairingCode` writes `creds.me` before the request reaches the
+  // server, so an attempt that failed mid-flight leaves an identified but
+  // unlinked session. Baileys would then take the login path and WhatsApp
+  // answers with a stream failure, so that dead identity is discarded first.
+  if (
+    params.pairing &&
+    restartAttempt === 0 &&
+    !credsLinked &&
+    (auth.state.creds as StoredCreds).me?.id
+  ) {
+    log.warn(
+      { event: "device.pairing_state_reset", deviceId },
+      "Discarding an unlinked WhatsApp session before pairing again",
+    );
+    await clearAuthState(deviceId);
+    auth = await loadAuthState(deviceId);
+    credsLinked = isLinked(auth.state.creds as StoredCreds);
+  }
+
   const { version } = await fetchLatestBaileysVersion();
-  // Set once the link-code handshake has completed; a second pair-code request
-  // on the same credentials would invalidate the session.
-  const credsRegistered = Boolean(
-    (auth.state.creds as { registered?: boolean }).registered,
-  );
 
   const socket = makeWASocket({
     version,
@@ -181,12 +218,18 @@ async function openSocket(
         });
       }
 
+      // The link-code request is a binary node, so it can only be sent once the
+      // Noise handshake is established. `connection: "connecting"` is emitted a
+      // tick after the socket is constructed — before the WebSocket is even
+      // open — so requesting there always failed. The pairing refs WhatsApp
+      // pushes for an unregistered handshake are the first proof the transport
+      // is usable, so they gate the request instead.
       if (
         !pairCodeRequested &&
         params.pairing?.method === "PAIR_CODE" &&
-        connection === "connecting" &&
+        qr &&
         restartAttempt === 0 &&
-        !credsRegistered
+        !credsLinked
       ) {
         pairCodeRequested = true;
         try {
@@ -206,12 +249,27 @@ async function openSocket(
               error instanceof Error ? error.name : "unknown"
             }`,
           );
+
+          // The request identifies the session before it leaves, so a failure
+          // leaves credentials that log in as an unregistered companion and get
+          // rejected by WhatsApp. Tear the attempt down completely.
           handle.state = "ERROR";
+          handle.disposed = true;
+          sockets.delete(deviceId);
+          try {
+            socket.end(undefined);
+          } catch {
+            // Closing an already-dead socket is not an error.
+          }
+          await credsWrite;
+          await clearAuthState(deviceId);
+
           await params.onUpdate?.({
             deviceId,
             state: "ERROR",
             errorCode: "PAIR_CODE_FAILED",
           });
+          return;
         }
       }
 

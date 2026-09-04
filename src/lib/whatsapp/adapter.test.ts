@@ -299,7 +299,9 @@ describe("whatsappAdapter pairing challenges", () => {
       onChallenge: events.onChallenge,
     });
 
-    socketAt(0).emit("connection.update", { connection: "connecting" });
+    // The pairing refs prove the Noise transport is up; a link-code request
+    // sent any earlier cannot reach the server.
+    socketAt(0).emit("connection.update", { qr: "ref-string" });
     await settle(0);
 
     expect(socketAt(0).requestPairingCode).toHaveBeenCalledTimes(1);
@@ -309,14 +311,85 @@ describe("whatsappAdapter pairing challenges", () => {
       pairCode: "AB12CD34",
     });
 
+    socketAt(0).emit("connection.update", { qr: "ref-string-2" });
+    await settle(0);
+    expect(socketAt(0).requestPairingCode).toHaveBeenCalledTimes(1);
+
     closeWith(socketAt(0), 515);
     await settle();
 
-    socketAt(1).emit("connection.update", { connection: "connecting" });
+    socketAt(1).emit("connection.update", { qr: "ref-string" });
     await settle(0);
 
     // Re-requesting a code on paired credentials would invalidate the session.
     expect(socketAt(1).requestPairingCode).not.toHaveBeenCalled();
+  });
+
+  it("does not request a pairing code before the transport is ready", async () => {
+    const deviceId = nextDeviceId();
+    const events = recorder();
+
+    await adapter.whatsappAdapter.connect({
+      deviceId,
+      pairing: { method: "PAIR_CODE", normalizedNumber: "628111222333" },
+      onUpdate: events.onUpdate,
+      onChallenge: events.onChallenge,
+    });
+
+    // Baileys emits this a tick after construction, before the socket is open.
+    socketAt(0).emit("connection.update", { connection: "connecting" });
+    await settle(0);
+
+    expect(socketAt(0).requestPairingCode).not.toHaveBeenCalled();
+    expect(events.challenges).toHaveLength(0);
+  });
+
+  it("discards the half-written session when the pair code request fails", async () => {
+    const deviceId = nextDeviceId();
+    const events = recorder();
+
+    await adapter.whatsappAdapter.connect({
+      deviceId,
+      pairing: { method: "PAIR_CODE", normalizedNumber: "628111222333" },
+      onUpdate: events.onUpdate,
+      onChallenge: events.onChallenge,
+    });
+
+    socketAt(0).requestPairingCode.mockRejectedValueOnce(
+      new Error("Connection Closed"),
+    );
+    socketAt(0).emit("connection.update", { qr: "ref-string" });
+    await settle(0);
+
+    expect(events.challenges).toHaveLength(0);
+    expect(events.updates).toEqual([
+      { deviceId, state: "ERROR", errorCode: "PAIR_CODE_FAILED" },
+    ]);
+    // `requestPairingCode` sets `creds.me` before it sends, so the leftover
+    // credentials would log in as an unregistered companion and be rejected.
+    expect(clearAuthState).toHaveBeenCalledWith(deviceId);
+    expect(socketAt(0).end).toHaveBeenCalled();
+
+    // The dead generation must not be able to report a later login.
+    socketAt(0).emit("connection.update", { connection: "open" });
+    await settle(0);
+    expect(events.updates).toHaveLength(1);
+  });
+
+  it("resets an unregistered session before requesting a new pair code", async () => {
+    const deviceId = nextDeviceId();
+    const events = recorder();
+    credsFixture = { registered: false, me: { id: "628111222333@s.whatsapp.net" } };
+
+    await adapter.whatsappAdapter.connect({
+      deviceId,
+      pairing: { method: "PAIR_CODE", normalizedNumber: "628111222333" },
+      onUpdate: events.onUpdate,
+      onChallenge: events.onChallenge,
+    });
+
+    expect(clearAuthState).toHaveBeenCalledWith(deviceId);
+    expect(loadAuthState).toHaveBeenCalledTimes(2);
   });
 
   it("skips the pairing code when the credentials are already registered", async () => {
@@ -331,14 +404,14 @@ describe("whatsappAdapter pairing challenges", () => {
       onChallenge: events.onChallenge,
     });
 
-    socketAt(0).emit("connection.update", { connection: "connecting" });
+    socketAt(0).emit("connection.update", { qr: "ref-string" });
     await settle(0);
 
     expect(socketAt(0).requestPairingCode).not.toHaveBeenCalled();
     expect(events.challenges).toHaveLength(0);
   });
 
-  it("does not hijack a pairing code flow with a QR challenge", async () => {
+  it("does not surface a QR challenge during a pairing code flow", async () => {
     const deviceId = nextDeviceId();
     const events = recorder();
 
@@ -352,7 +425,9 @@ describe("whatsappAdapter pairing challenges", () => {
     socketAt(0).emit("connection.update", { qr: "ref-string" });
     await settle(0);
 
-    expect(events.challenges).toHaveLength(0);
+    expect(
+      events.challenges.some((challenge) => challenge.method === "QR"),
+    ).toBe(false);
   });
 
   it("forwards a QR on a silent reconnect that has no pairing request", async () => {
