@@ -140,14 +140,14 @@ export default async function DashboardPage() {
                 <StaggerItem key={job.id}>
                   <Link
                     href={`/dashboard/jobs/${job.id}`}
-                    className="lift block rounded-xl border border-border bg-surface/60 p-4 hover:border-primary/45 hover:bg-surface hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    className="lift block border-4 border-black bg-surface p-4 hover:bg-accent focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
+                        <p className="truncate text-sm font-black uppercase text-foreground">
                           {job.campaignName}
                         </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="mt-0.5 text-xs font-bold text-foreground">
                           {job.deviceLabel} · {job.speedSeconds}s ·{" "}
                           {job.progress.sent}/{job.quotaTotal} sent
                         </p>

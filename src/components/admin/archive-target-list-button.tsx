@@ -64,7 +64,7 @@ export function ArchiveTargetListButton({
         name="reason"
         value="Archived by administrator"
       />
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs font-bold uppercase text-foreground">
         Archive this list? Numbers and history are kept.
       </span>
       <Button type="submit" variant="destructive" size="sm" loading={pending}>

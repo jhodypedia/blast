@@ -3,19 +3,16 @@ import { cn } from "@/lib/utils";
 /**
  * Skeleton placeholder for loading states.
  *
- * A green shimmer sweeps across a flat surface tint; both the sweep and the
- * pulse are disabled automatically under `prefers-reduced-motion` by the global
- * rule in globals.css.
+ * Brutalist treatment: a raw grey block inside a black rule with a stepped
+ * sweep. The sweep is disabled automatically under `prefers-reduced-motion` by
+ * the global rule in globals.css.
  */
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="skeleton"
       aria-hidden="true"
-      className={cn(
-        "shimmer rounded-lg border border-border/60 bg-surface-strong",
-        className,
-      )}
+      className={cn("shimmer border-2 border-black bg-surface-strong", className)}
       {...props}
     />
   );
@@ -47,7 +44,7 @@ function SkeletonCard({ className }: { className?: string }) {
     <div
       aria-hidden="true"
       className={cn(
-        "rounded-xl border border-border bg-card p-5 shadow-panel",
+        "border-4 border-black bg-card p-4 shadow-panel sm:p-5",
         className,
       )}
     >
@@ -57,7 +54,7 @@ function SkeletonCard({ className }: { className?: string }) {
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-3 w-20" />
         </div>
-        <Skeleton className="size-10 rounded-lg" />
+        <Skeleton className="size-10" />
       </div>
     </div>
   );

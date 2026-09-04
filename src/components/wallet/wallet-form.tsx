@@ -47,7 +47,7 @@ export function WalletForm({
 
   if (disabled) {
     return (
-      <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
+      <p className="border-4 border-black bg-warning p-3 text-xs font-bold text-warning-foreground">
         {disabledReason ?? "Wallet changes are not available right now."}
       </p>
     );
@@ -58,7 +58,7 @@ export function WalletForm({
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -77,7 +77,10 @@ export function WalletForm({
           aria-invalid={Boolean(fieldError("fullName"))}
         />
         {fieldError("fullName") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("fullName")}
           </p>
         ) : null}
@@ -90,7 +93,7 @@ export function WalletForm({
           name="providerCode"
           required
           disabled={pending}
-          className="flex h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+          className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
         >
           {providers.map((provider) => (
             <option key={provider.code} value={provider.code}>
@@ -114,7 +117,10 @@ export function WalletForm({
             aria-invalid={Boolean(fieldError("accountNumber"))}
           />
           {fieldError("accountNumber") ? (
-            <p role="alert" className="text-xs text-destructive">
+            <p
+              role="alert"
+              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+            >
               {fieldError("accountNumber")}
             </p>
           ) : null}
@@ -132,7 +138,10 @@ export function WalletForm({
             aria-invalid={Boolean(fieldError("confirmAccountNumber"))}
           />
           {fieldError("confirmAccountNumber") ? (
-            <p role="alert" className="text-xs text-destructive">
+            <p
+              role="alert"
+              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+            >
               {fieldError("confirmAccountNumber")}
             </p>
           ) : null}
@@ -141,7 +150,7 @@ export function WalletForm({
 
       <TurnstileWidget action="wallet" />
 
-      <div className="flex items-start gap-2 rounded-lg border border-info/25 bg-info/10 p-3 text-xs text-info">
+      <div className="flex items-start gap-2 border-4 border-black bg-info p-3 text-xs font-bold text-info-foreground">
         <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <span>
           {isChange

@@ -66,7 +66,7 @@ export function WithdrawalReviewControls({
 
   if (!selected) {
     return (
-      <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+      <div className="flex flex-wrap gap-2 border-t-4 border-black pt-3">
         {options.map((option) => (
           <Button
             key={option.action}
@@ -89,7 +89,7 @@ export function WithdrawalReviewControls({
     <form
       action={formAction}
       onSubmit={() => setSelected(null)}
-      className="space-y-3 border-t border-border pt-3"
+      className="space-y-3 border-t-4 border-black pt-3"
       noValidate
     >
       <input type="hidden" name="withdrawalId" value={withdrawalId} />

@@ -40,7 +40,7 @@ export function ChangePasswordForm() {
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -59,7 +59,10 @@ export function ChangePasswordForm() {
           aria-invalid={Boolean(fieldError("currentPassword"))}
         />
         {fieldError("currentPassword") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("currentPassword")}
           </p>
         ) : null}
@@ -77,11 +80,14 @@ export function ChangePasswordForm() {
           aria-invalid={Boolean(fieldError("newPassword"))}
           aria-describedby="newPassword-hint"
         />
-        <p id="newPassword-hint" className="text-xs text-muted-foreground">
+        <p id="newPassword-hint" className="text-xs font-bold text-foreground">
           At least 10 characters with upper case, lower case and a number.
         </p>
         {fieldError("newPassword") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("newPassword")}
           </p>
         ) : null}
@@ -99,7 +105,10 @@ export function ChangePasswordForm() {
           aria-invalid={Boolean(fieldError("confirmPassword"))}
         />
         {fieldError("confirmPassword") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("confirmPassword")}
           </p>
         ) : null}

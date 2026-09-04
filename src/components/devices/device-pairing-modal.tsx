@@ -183,7 +183,7 @@ export function DevicePairingModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overlay-forest p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pairing-title"
@@ -191,26 +191,28 @@ export function DevicePairingModal({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.22, ease: "easeOut" }}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-lift sm:p-6"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: "linear" }}
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto border-4 border-black bg-card p-4 shadow-lift sm:p-6"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 border-b-4 border-black pb-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary">Hubungkan perangkat</p>
-            <h2 id="pairing-title" className="mt-1 text-xl font-bold">{deviceName}</h2>
+            <p className="border-2 border-black bg-primary px-2 py-0.5 text-xs font-black uppercase tracking-widest text-primary-foreground">
+              Hubungkan perangkat
+            </p>
+            <h2 id="pairing-title" className="mt-2 text-xl">{deviceName}</h2>
           </div>
-          <Button ref={closeButtonRef} type="button" variant="ghost" size="sm" onClick={onClose}>Tutup</Button>
+          <Button ref={closeButtonRef} type="button" variant="outline" size="sm" onClick={onClose}>Tutup</Button>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl border border-border bg-background p-1" role="tablist" aria-label="Metode koneksi">
+        <div className="mt-5 grid grid-cols-2 border-4 border-black bg-background" role="tablist" aria-label="Metode koneksi">
           {methods.map((item) => (
             <button
               key={item}
               type="button"
-              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${method === item ? "bg-primary/12 text-primary shadow-sm ring-1 ring-primary/25" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              className={`min-h-11 border-black px-3 py-2 text-sm font-black uppercase tracking-wide transition-colors duration-100 [transition-timing-function:steps(2,end)] first:border-r-4 ${method === item ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent"}`}
               onClick={() => setMethod(item)}
               aria-pressed={method === item}
             >
@@ -236,7 +238,7 @@ export function DevicePairingModal({
                 value={countryCode}
                 onChange={(event) => setCountryCode(event.target.value)}
                 aria-label="Kode negara"
-                className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                className="flex h-11 w-full border-4 border-black bg-background px-2 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
               >
                 {COUNTRIES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
               </select>
@@ -251,7 +253,11 @@ export function DevicePairingModal({
                 aria-invalid={Boolean(validationError)}
               />
             </div>
-            {validationError ? <p className="text-xs text-destructive">{validationError}</p> : null}
+            {validationError ? (
+              <p className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground">
+                {validationError}
+              </p>
+            ) : null}
             <Button type="submit" loading={pairPending} className="w-full">Minta kode pairing</Button>
           </form>
         ) : (
@@ -264,27 +270,27 @@ export function DevicePairingModal({
           </form>
         )}
 
-        <div className="mt-5 min-h-48 rounded-2xl border border-border bg-background/70 p-4 text-center" aria-live="polite">
+        <div className="mt-5 min-h-48 border-4 border-black bg-surface p-4 text-center" aria-live="polite">
           {connected ? (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-success">
+            <div className="flex min-h-40 flex-col items-center justify-center gap-2 border-4 border-black bg-success p-4 text-success-foreground">
               <CheckCircle2 className="size-10" />
-              <strong>Terhubung</strong>
-              <span className="text-sm text-muted-foreground">Perangkat siap digunakan.</span>
+              <strong className="font-black uppercase tracking-wide">Terhubung</strong>
+              <span className="text-sm font-bold">Perangkat siap digunakan.</span>
             </div>
           ) : restarting ? (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-info">
+            <div className="flex min-h-40 flex-col items-center justify-center gap-2 border-4 border-black bg-info p-4 text-info-foreground">
               <Loader2 className="size-8 animate-spin" />
-              <strong>Menyelesaikan koneksi</strong>
-              <span className="text-sm text-muted-foreground">Perangkat berhasil ditautkan. WhatsApp meminta sesi dimulai ulang, mohon tunggu.</span>
+              <strong className="font-black uppercase tracking-wide">Menyelesaikan koneksi</strong>
+              <span className="text-sm font-bold">Perangkat berhasil ditautkan. WhatsApp meminta sesi dimulai ulang, mohon tunggu.</span>
             </div>
           ) : loadingStatus && !payload ? (
-            <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-5 animate-spin" /> Mengambil status...</div>
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm font-black uppercase tracking-widest text-foreground"><Loader2 className="size-5 animate-spin" /> Mengambil status...</div>
           ) : qrChallenge && !expired ? (
-            <div className="flex flex-col items-center gap-2">{qrDataUrl ? <img src={qrDataUrl} alt="QR Code WhatsApp" width={240} height={240} className="rounded-lg bg-white p-2" /> : <Loader2 className="my-20 size-6 animate-spin text-primary" />}<span className="text-xs text-muted-foreground">Pindai QR Code ini dari WhatsApp.</span>{remainingMs !== null ? <span className="text-xs font-medium text-muted-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
+            <div className="flex flex-col items-center gap-2">{qrDataUrl ? <img src={qrDataUrl} alt="QR Code WhatsApp" width={240} height={240} className="border-4 border-black bg-white p-2" /> : <Loader2 className="my-20 size-6 animate-spin text-primary" />}<span className="text-xs font-bold uppercase text-foreground">Pindai QR Code ini dari WhatsApp.</span>{remainingMs !== null ? <span className="border-2 border-black bg-warning px-2 py-0.5 text-xs font-black uppercase text-warning-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
           ) : pairCodeChallenge && !expired ? (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="font-mono text-2xl tracking-[0.2em] text-primary">{pairCodeChallenge.pairCode}</strong><Button type="button" variant="ghost" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(pairCodeChallenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div>{remainingMs !== null ? <span className="text-xs font-medium text-muted-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm font-bold uppercase text-foreground">Masukkan kode ini di WhatsApp:</p><div className="flex items-center gap-2"><strong className="border-4 border-black bg-primary px-3 py-1 font-mono text-2xl font-black tracking-[0.2em] text-primary-foreground">{pairCodeChallenge.pairCode}</strong><Button type="button" variant="outline" size="icon" aria-label="Salin kode pairing" onClick={() => { void navigator.clipboard.writeText(pairCodeChallenge.pairCode); toast.success("Kode pairing disalin."); }}><Copy /></Button></div>{remainingMs !== null ? <span className="border-2 border-black bg-warning px-2 py-0.5 text-xs font-black uppercase text-warning-foreground">Berlaku {formatCountdown(remainingMs)}</span> : null}</div>
           ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-sm font-bold uppercase text-foreground">
               <p>
                 {connectionError || pairState.status === "error"
                   ? "Koneksi gagal dimulai."

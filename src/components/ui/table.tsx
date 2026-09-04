@@ -9,14 +9,16 @@ import { cn } from "@/lib/utils";
  * break the mobile layout; pages that need a denser mobile view render a card
  * list instead (RULES.md §18 responsive table alternatives).
  *
- * Rows are striped with a flat surface tint and highlight on hover.
+ * Brutalist treatment: every cell draws its own black rule, so the grid itself
+ * is the visual structure. Header is inverted (white on black), rows highlight
+ * to hazard yellow on hover and selection.
  */
 function TableWrapper({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="table-wrapper"
       className={cn(
-        "w-full overflow-x-auto rounded-xl border border-border bg-card shadow-panel",
+        "w-full overflow-x-auto border-4 border-black bg-card shadow-panel",
         className,
       )}
       {...props}
@@ -28,7 +30,10 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <table
       data-slot="table"
-      className={cn("w-full caption-bottom border-collapse text-sm", className)}
+      className={cn(
+        "w-full caption-bottom border-collapse font-mono text-sm",
+        className,
+      )}
       {...props}
     />
   );
@@ -38,7 +43,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-surface-strong", className)}
+      className={cn("border-b-4 border-black bg-foreground", className)}
       {...props}
     />
   );
@@ -53,8 +58,8 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b border-border/70 transition-colors duration-150 last:border-0",
-        "even:bg-surface/40 hover:bg-primary/8 data-[state=selected]:bg-primary/10",
+        "border-b-2 border-black last:border-b-0",
+        "hover:bg-accent data-[state=selected]:bg-accent",
         className,
       )}
       {...props}
@@ -67,7 +72,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-11 whitespace-nowrap px-4 text-left align-middle text-xs font-bold uppercase tracking-wider text-muted-foreground",
+        "h-11 whitespace-nowrap border-r-2 border-background px-3 text-left align-middle text-xs font-black uppercase tracking-widest text-background last:border-r-0",
         className,
       )}
       {...props}
@@ -79,7 +84,10 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (
     <td
       data-slot="table-cell"
-      className={cn("px-4 py-3 align-middle text-foreground", className)}
+      className={cn(
+        "border-r-2 border-black px-3 py-2.5 align-middle text-foreground last:border-r-0",
+        className,
+      )}
       {...props}
     />
   );
@@ -89,7 +97,10 @@ function TableCaption({ className, ...props }: React.ComponentProps<"caption">) 
   return (
     <caption
       data-slot="table-caption"
-      className={cn("px-4 py-3 text-left text-xs text-muted-foreground", className)}
+      className={cn(
+        "border-t-4 border-black px-3 py-2 text-left text-xs font-bold uppercase text-foreground",
+        className,
+      )}
       {...props}
     />
   );

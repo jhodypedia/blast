@@ -40,14 +40,16 @@ export function AddDeviceForm({ disabled }: { disabled?: boolean }) {
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
         </div>
       ) : null}
 
-      <p className="text-sm text-muted-foreground">Nama dan ID perangkat dibuat otomatis setelah slot berhasil dibuat.</p>
+      <p className="text-sm font-bold text-foreground">
+        Nama dan ID perangkat dibuat otomatis setelah slot berhasil dibuat.
+      </p>
       <Button type="submit" loading={pending} disabled={disabled}>
         <Plus aria-hidden="true" />
         Tambah perangkat

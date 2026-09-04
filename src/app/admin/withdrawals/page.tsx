@@ -86,16 +86,16 @@ export default async function AdminWithdrawalsPage() {
             <Stagger className="space-y-3">
               {walletRequests.map((request) => (
                 <StaggerItem key={request.id}>
-                  <div className="flex flex-col gap-3 rounded-xl border border-warning/25 bg-warning/8 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 border-4 border-black bg-warning p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <IconTile tone="warning" className="size-9 shrink-0">
                         <UserCog className="size-4" />
                       </IconTile>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
+                        <p className="truncate text-sm font-black uppercase text-warning-foreground">
                           {request.userEmail}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-xs font-bold text-warning-foreground">
                           New: {request.providerName} · {request.accountMasked} ·{" "}
                           {request.createdAt.toISOString().slice(0, 10)}
                         </p>
@@ -124,7 +124,7 @@ export default async function AdminWithdrawalsPage() {
             <Stagger className="space-y-3">
               {withdrawals.map((row) => (
                 <StaggerItem key={row.id}>
-                  <div className="rounded-xl border border-border bg-surface/60 p-4 transition-colors hover:border-primary/30 hover:bg-surface">
+                  <div className="border-4 border-black bg-surface p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent">
                     <div className="flex flex-wrap items-start gap-3">
                       <IconTile
                         tone={
@@ -139,10 +139,10 @@ export default async function AdminWithdrawalsPage() {
                         <Receipt className="size-4" />
                       </IconTile>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">
+                        <p className="truncate text-sm font-black uppercase text-foreground">
                           {row.userName || row.userEmail}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {row.userEmail} · {row.providerName} ·{" "}
                           {row.accountMasked}
                         </p>
@@ -173,7 +173,7 @@ export default async function AdminWithdrawalsPage() {
                       />
                     </dl>
 
-                    <div className="mt-4 border-t border-border/70 pt-4">
+                    <div className="mt-4 border-t-4 border-black pt-4">
                       <WithdrawalReviewControls
                         withdrawalId={row.id}
                         status={row.status}
@@ -203,16 +203,16 @@ function Amount({
   emphasise?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="border-4 border-black bg-card p-3">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest text-foreground">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
       <dd
         className={
           emphasise
-            ? "mt-1 text-sm font-bold text-success"
-            : "mt-1 text-sm font-bold text-foreground"
+            ? "mt-1 text-sm font-black leading-none tracking-tight text-success"
+            : "mt-1 text-sm font-black leading-none tracking-tight text-foreground"
         }
       >
         {value}

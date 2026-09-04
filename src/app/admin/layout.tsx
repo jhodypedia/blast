@@ -42,7 +42,7 @@ const NAV: NavItem[] = [
   {
     href: "/admin/users",
     label: "Operator",
-    icon: <Users className="size-4 text-muted-foreground" />,
+    icon: <Users className="size-4 text-foreground" />,
   },
   {
     href: "/admin/withdrawals",
@@ -52,7 +52,7 @@ const NAV: NavItem[] = [
   {
     href: "/admin/settings",
     label: "Pengaturan",
-    icon: <Settings className="size-4 text-muted-foreground" />,
+    icon: <Settings className="size-4 text-foreground" />,
   },
   {
     href: "/admin/audit",

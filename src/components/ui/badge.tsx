@@ -6,28 +6,27 @@ import { cn } from "@/lib/utils";
 
 /**
  * Status badge. Colour semantics follow RULES.md §18:
- * emerald = success/connected/earnings, amber = pending/warning,
- * rose = failed/destructive, cyan = info, primary = active state.
+ * green = success/connected/earnings, yellow = pending/warning,
+ * red = failed/destructive, cyan = info, blue = active state.
  *
- * Backgrounds are flat colour-mix tints of the semantic token — no gradients —
- * and every combination keeps text above 4.5:1 against the card surface.
+ * Brutalist treatment: square block, thick black border, fully saturated flat
+ * fill. Every fill/ink pairing keeps text above 4.5:1.
  */
 const badgeVariants = cva(
   [
-    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5",
-    "text-xs font-semibold tracking-tight whitespace-nowrap",
-    "transition-colors duration-200",
+    "inline-flex items-center gap-1.5 border-2 border-black px-2 py-0.5",
+    "font-mono text-xs font-black uppercase tracking-wider whitespace-nowrap",
     "[&_svg]:size-3 [&_svg]:shrink-0",
   ],
   {
     variants: {
       variant: {
-        neutral: "border-border bg-surface-strong text-muted-foreground",
-        primary: "border-primary/30 bg-primary/12 text-primary",
-        success: "border-success/30 bg-success/12 text-success",
-        warning: "border-warning/35 bg-warning/15 text-warning",
-        danger: "border-destructive/30 bg-destructive/12 text-destructive",
-        info: "border-info/30 bg-info/12 text-info",
+        neutral: "bg-surface-strong text-foreground",
+        primary: "bg-primary text-primary-foreground",
+        success: "bg-success text-success-foreground",
+        warning: "bg-warning text-warning-foreground",
+        danger: "bg-destructive text-destructive-foreground",
+        info: "bg-info text-info-foreground",
       },
     },
     defaultVariants: {
@@ -37,17 +36,17 @@ const badgeVariants = cva(
 );
 
 const DOT_TONES = {
-  neutral: "bg-muted-foreground",
-  primary: "bg-primary",
-  success: "bg-success",
-  warning: "bg-warning",
-  danger: "bg-destructive",
-  info: "bg-info",
+  neutral: "bg-foreground",
+  primary: "bg-primary-foreground",
+  success: "bg-success-foreground",
+  warning: "bg-warning-foreground",
+  danger: "bg-destructive-foreground",
+  info: "bg-info-foreground",
 } as const;
 
 export type BadgeProps = React.ComponentProps<"span"> &
   VariantProps<typeof badgeVariants> & {
-    /** Render a leading status dot; `pulse` animates it for live states. */
+    /** Render a leading status block; `pulse` blinks it for live states. */
     dot?: boolean;
     pulse?: boolean;
   };
@@ -70,9 +69,9 @@ function Badge({
         <span
           aria-hidden="true"
           className={cn(
-            "size-1.5 shrink-0 rounded-full",
+            "size-2 shrink-0",
             DOT_TONES[variant ?? "neutral"],
-            pulse && "animate-[glow-pulse_2.6s_ease-in-out_infinite]",
+            pulse && "animate-[blink_1s_steps(1,end)_infinite]",
           )}
         />
       ) : null}

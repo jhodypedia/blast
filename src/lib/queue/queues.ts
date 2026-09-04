@@ -41,6 +41,7 @@ export type DeviceSessionJobData = {
 export type MaintenanceJobData = {
   task:
     | "RECLAIM_STALE_LEASES"
+    | "REQUEUE_ORPHANED_JOBS"
     | "EXPIRE_CAMPAIGNS"
     | "PRUNE_LOGS"
     | "SWEEP_DEVICES";
@@ -116,13 +117,60 @@ export async function enqueueTargetImport(
   });
 }
 
+export function blastDeliveryJobId(blastJobId: string): string {
+  return `blast-${blastJobId}`;
+}
+
 export async function enqueueBlastDelivery(
   data: BlastDeliveryJobData,
 ): Promise<void> {
   await enqueue(QUEUE_NAMES.blastDelivery, data, {
-    jobId: `blast-${data.blastJobId}`,
+    jobId: blastDeliveryJobId(data.blastJobId),
     attempts: 1,
   });
+}
+
+/** Outcome of a recovery re-enqueue attempt. */
+export type RequeueOutcome =
+  /** A live job already exists; nothing to do. */
+  | "ALREADY_QUEUED"
+  /** A dead job key was cleared and the delivery job was re-added. */
+  | "REQUEUED"
+  /** The job key is held by a running worker; leave it alone. */
+  | "LOCKED";
+
+/**
+ * Re-enqueues delivery for a job whose BullMQ counterpart died.
+ *
+ * `enqueueBlastDelivery` uses a deterministic job id, so once a run has settled
+ * into `completed`/`failed` (kept for 24h by `removeOnFail`) a plain re-add is
+ * silently discarded and the blast job stays stranded. Recovery therefore has to
+ * drop the settled key first. A job that is still live — or locked by another
+ * worker — is never touched, so this is safe to run from several replicas.
+ */
+export async function requeueBlastDelivery(
+  blastJobId: string,
+): Promise<RequeueOutcome> {
+  const queue = getQueue(QUEUE_NAMES.blastDelivery);
+  const jobId = blastDeliveryJobId(blastJobId);
+  const existing = await queue.getJob(jobId);
+
+  if (existing) {
+    const state = await existing.getState();
+
+    if (state !== "completed" && state !== "failed" && state !== "unknown") {
+      return "ALREADY_QUEUED";
+    }
+
+    // `remove` returns 0 while a worker still holds the job lock.
+    const removed = await queue.remove(jobId);
+    if (removed === 0) {
+      return "LOCKED";
+    }
+  }
+
+  await enqueueBlastDelivery({ blastJobId });
+  return "REQUEUED";
 }
 
 export async function enqueueDeviceSession(

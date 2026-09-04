@@ -51,7 +51,7 @@ export function StartBlastForm({
 
   if (devices.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className="border-2 border-black bg-surface px-2 py-1 text-xs font-black uppercase text-foreground">
         Connect a device before starting a job.
       </p>
     );
@@ -67,7 +67,7 @@ export function StartBlastForm({
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -81,7 +81,7 @@ export function StartBlastForm({
           name="deviceId"
           required
           disabled={pending || disabled}
-          className="flex h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+          className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
         >
           {devices.map((device) => (
             <option key={device.id} value={device.id}>
@@ -92,7 +92,9 @@ export function StartBlastForm({
       </div>
 
       <fieldset className="space-y-2" disabled={pending || disabled}>
-        <legend className="text-sm font-medium">Sending speed</legend>
+        <legend className="text-xs font-black uppercase tracking-widest">
+          Sending speed
+        </legend>
         <div className="flex flex-wrap gap-2">
           {allowedSpeeds.map((option) => (
             <Button
@@ -107,19 +109,19 @@ export function StartBlastForm({
             </Button>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs font-bold uppercase text-foreground">
           One message every {speed} second{speed === 1 ? "" : "s"}.
         </p>
       </fieldset>
 
       {requireTermsAccept ? (
-        <label className="flex min-h-11 items-start gap-2 text-xs text-muted-foreground">
+        <label className="flex min-h-11 items-start gap-2 border-2 border-black bg-surface p-2 text-xs font-bold text-foreground">
           <input
             type="checkbox"
             name="acceptedTerms"
             checked={accepted}
             onChange={(event) => setAccepted(event.target.checked)}
-            className="mt-0.5 size-4"
+            className="mt-0.5 size-4 border-2 border-black accent-primary"
             disabled={pending || disabled}
           />
           <span>
@@ -134,7 +136,9 @@ export function StartBlastForm({
       </Button>
 
       {disabled && disabledReason ? (
-        <p className="text-xs text-warning-foreground">{disabledReason}</p>
+        <p className="border-2 border-black bg-warning px-2 py-1 text-xs font-black uppercase text-warning-foreground">
+          {disabledReason}
+        </p>
       ) : null}
     </form>
   );

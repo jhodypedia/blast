@@ -84,7 +84,7 @@ export default async function AdminCampaignsPage() {
             {campaigns.map((campaign) => (
               <StaggerItem key={campaign.id}>
                 <Card hover>
-                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                  <CardContent className="p-4 pt-4 sm:p-5 sm:pt-5">
                     <div className="flex flex-wrap items-start gap-3.5">
                       <IconTile
                         tone={
@@ -101,17 +101,17 @@ export default async function AdminCampaignsPage() {
                       <div className="min-w-0 flex-1">
                         <Link
                           href={`/admin/campaigns/${campaign.id}`}
-                          className="group inline-flex max-w-full items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="group inline-flex max-w-full items-center gap-1 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
-                          <span className="truncate text-base font-bold tracking-tight group-hover:text-primary">
+                          <span className="truncate text-base font-black uppercase tracking-tight group-hover:bg-accent">
                             {campaign.name}
                           </span>
                           <ChevronRight
                             aria-hidden="true"
-                            className="size-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-0.5"
+                            className="size-4 shrink-0 text-primary transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-0.5"
                           />
                         </Link>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-foreground">
                           <span className="inline-flex items-center gap-1.5">
                             <ListChecks
                               aria-hidden="true"
@@ -164,7 +164,7 @@ export default async function AdminCampaignsPage() {
                       />
                     </dl>
 
-                    <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <p className="mt-3 flex items-center gap-1.5 text-xs font-bold uppercase text-foreground">
                       <CalendarRange
                         aria-hidden="true"
                         className="size-3.5 shrink-0 text-info"
@@ -173,7 +173,7 @@ export default async function AdminCampaignsPage() {
                       {campaign.scheduledEndAt.toISOString().slice(0, 16)} UTC
                     </p>
 
-                    <div className="mt-4 border-t border-border/70 pt-4">
+                    <div className="mt-4 border-t-4 border-black pt-4">
                       <CampaignTransitionControls
                         campaignId={campaign.id}
                         status={campaign.status}
@@ -206,15 +206,17 @@ function Metric({
     <div
       className={
         tone === "success"
-          ? "rounded-lg border border-success/25 bg-success/8 p-3 text-success"
-          : "rounded-lg border border-border bg-surface/60 p-3 text-muted-foreground"
+          ? "border-4 border-black bg-success p-3 text-success-foreground"
+          : "border-4 border-black bg-surface p-3 text-foreground"
       }
     >
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
+      <dd className="mt-1 text-lg font-black leading-none tracking-tighter">
+        {value}
+      </dd>
     </div>
   );
 }

@@ -50,7 +50,7 @@ export default async function AdminAuditPage() {
             <Stagger className="space-y-2">
               {entries.map((entry) => (
                 <StaggerItem key={entry.id}>
-                  <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/60 p-3.5 transition-colors hover:border-primary/30 hover:bg-surface sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 border-4 border-black bg-surface p-3.5 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <IconTile
                         tone={entry.actorRole === "ADMIN" ? "primary" : "info"}
@@ -59,14 +59,14 @@ export default async function AdminAuditPage() {
                         <ScrollText className="size-4" />
                       </IconTile>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
+                        <p className="truncate text-sm font-black uppercase text-foreground">
                           {entry.action}
-                          <span className="ml-2 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.6875rem] font-medium text-muted-foreground">
+                          <span className="ml-2 border-2 border-black bg-background px-1.5 py-0.5 font-mono text-[0.6875rem] font-bold text-foreground">
                             {entry.resourceType}
                             {entry.resourceId ? `:${entry.resourceId}` : ""}
                           </span>
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {entry.actorEmail ?? "system"} ·{" "}
                           {entry.createdAt
                             .toISOString()
@@ -75,7 +75,7 @@ export default async function AdminAuditPage() {
                           UTC
                         </p>
                         {entry.reason ? (
-                          <p className="mt-1 flex items-start gap-1.5 truncate text-xs text-muted-foreground">
+                          <p className="mt-1 flex items-start gap-1.5 truncate text-xs font-bold text-foreground">
                             <MessageSquareQuote
                               aria-hidden="true"
                               className="mt-0.5 size-3.5 shrink-0 text-info"

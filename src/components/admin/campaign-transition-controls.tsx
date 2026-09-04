@@ -71,7 +71,7 @@ export function CampaignTransitionControls({
   }
 
   return (
-    <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+    <div className="flex flex-wrap gap-2 border-t-4 border-black pt-3">
       {options.map((option) => (
         <form key={option.action} action={formAction}>
           <input type="hidden" name="campaignId" value={campaignId} />

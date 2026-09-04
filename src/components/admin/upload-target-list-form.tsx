@@ -44,7 +44,7 @@ export function UploadTargetListForm({
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -64,7 +64,10 @@ export function UploadTargetListForm({
             aria-invalid={Boolean(fieldError("name"))}
           />
           {fieldError("name") ? (
-            <p role="alert" className="text-xs text-destructive">
+            <p
+              role="alert"
+              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+            >
               {fieldError("name")}
             </p>
           ) : null}
@@ -81,7 +84,7 @@ export function UploadTargetListForm({
             disabled={pending}
             aria-describedby="country-hint"
           />
-          <p id="country-hint" className="text-xs text-muted-foreground">
+          <p id="country-hint" className="text-xs font-bold text-foreground">
             Hanya dipakai untuk nomor lokal tanpa awalan negara.
           </p>
         </div>
@@ -89,10 +92,17 @@ export function UploadTargetListForm({
 
       <div className="space-y-2">
         <Label htmlFor="target-file">File nomor</Label>
-        <label htmlFor="target-file" className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-primary/35 bg-primary/5 px-5 py-7 text-center transition-colors hover:border-primary hover:bg-primary/10">
+        <label
+          htmlFor="target-file"
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 border-4 border-dashed border-black bg-surface px-5 py-7 text-center transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent"
+        >
           <FileText className="size-7 text-primary" aria-hidden="true" />
-          <span className="text-sm font-semibold">Pilih file .TXT atau .CSV</span>
-          <span className="text-xs text-muted-foreground">Satu nomor per baris, tanpa nama atau kolom tambahan</span>
+          <span className="text-sm font-black uppercase tracking-wide">
+            Pilih file .TXT atau .CSV
+          </span>
+          <span className="text-xs font-bold text-foreground">
+            Satu nomor per baris, tanpa nama atau kolom tambahan
+          </span>
           <Input
             id="target-file"
             name="file"
@@ -105,7 +115,10 @@ export function UploadTargetListForm({
           />
         </label>
         {fieldError("file") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("file")}
           </p>
         ) : null}

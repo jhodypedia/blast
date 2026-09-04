@@ -100,7 +100,7 @@ export default async function JobsPage() {
             {jobs.map((job) => (
               <StaggerItem key={job.id}>
                 <Card hover>
-                  <div className="flex flex-wrap items-start gap-3.5 border-b border-border/70 p-5 sm:p-6">
+                  <div className="flex flex-wrap items-start gap-3.5 border-b-4 border-black bg-surface p-4 sm:p-5">
                     <IconTile
                       tone={
                         job.status === "COMPLETED"
@@ -116,15 +116,15 @@ export default async function JobsPage() {
                       <Send className="size-5" />
                     </IconTile>
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-base font-bold tracking-tight sm:text-lg">
+                      <h2 className="truncate text-base sm:text-lg">
                         <Link
                           href={`/dashboard/jobs/${job.id}`}
-                          className="rounded underline-offset-4 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
                           {job.campaignName}
                         </Link>
                       </h2>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-foreground">
                         <span className="inline-flex items-center gap-1.5">
                           <Smartphone
                             aria-hidden="true"
@@ -153,10 +153,10 @@ export default async function JobsPage() {
                     </Badge>
                   </div>
 
-                  <CardContent className="space-y-5 p-5 pt-5 sm:p-6 sm:pt-6">
+                  <CardContent className="space-y-5 p-4 pt-4 sm:p-5 sm:pt-5">
                     <div>
-                      <div className="mb-2 flex items-center justify-between text-xs font-semibold">
-                        <span className="text-muted-foreground">
+                      <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-widest">
+                        <span className="text-foreground">
                           {job.progress.sent} / {job.quotaTotal} delivered
                         </span>
                         <span className="text-primary">{job.percent}%</span>
@@ -223,19 +223,21 @@ function Stat({
   icon: React.ReactNode;
 }) {
   const tones = {
-    success: "border-success/25 bg-success/8 text-success",
-    danger: "border-destructive/25 bg-destructive/8 text-destructive",
-    warning: "border-warning/25 bg-warning/8 text-warning",
-    neutral: "border-border bg-surface/60 text-muted-foreground",
+    success: "bg-success text-success-foreground",
+    danger: "bg-destructive text-destructive-foreground",
+    warning: "bg-warning text-warning-foreground",
+    neutral: "bg-surface text-foreground",
   } as const;
 
   return (
-    <div className={cn("rounded-lg border p-3", tones[tone])}>
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+    <div className={cn("border-4 border-black p-3", tones[tone])}>
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
+      <dd className="mt-1 text-lg font-black leading-none tracking-tighter">
+        {value}
+      </dd>
     </div>
   );
 }

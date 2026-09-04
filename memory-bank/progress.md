@@ -28,7 +28,7 @@ unexercised against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | exit 0 — 209 tests, 19 files |
+| Unit tests | `npm test` (`vitest run`) | exit 0 — 218 tests, 20 files |
 | Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
 | Build | `npm run build` | exit 0 |
 
@@ -606,6 +606,80 @@ downgrade warning.
 - **Not** verified: `npm run test:integration` (see gap 4 — no server with
   `SKIP LOCKED` is available on this machine any more), and a real browser click
   through `/dashboard/campaigns`.
+
+## Stale Worker and Orphaned Job Recovery (2026-09-04)
+
+A delivery job failed with `Invalid prisma.$queryRaw() invocation: Raw query
+failed. Code: 1064 … right syntax to use near 'SKIP LOCKED' at line 11`, logged as
+`queue.job_failed` for `blast-cc369737-de4e-4088-8275-9e2d84ba3888`.
+
+**Cause: a stale worker process, not the code.** `src/lib/db/locking.ts` only
+exists as of commit `8126cf0` (12:17 local); the two `node` processes serving the
+queue had started at 08:07 and were still executing the pre-fix
+`recipient-claim.ts`, whose hardcoded `FOR UPDATE SKIP LOCKED` was the last line
+of the query — exactly the "line 11" the parser reported. `git show
+4d8f21c:src/lib/delivery/recipient-claim.ts` confirms the old text. `tsx` without
+`--watch` never reloads, so the on-disk fix was invisible to the running worker.
+The stale PIDs were killed and `npm run worker` restarted; the log shows five
+`redis.ready` lines then `worker.started`. The `db.skip_locked_unsupported`
+downgrade warning has not appeared yet only because `rowLockMode` probes lazily on
+the first claim and no delivery job has run since.
+
+**Rule:** restart the worker after editing anything under `src/worker/` or the
+services it imports. `npm run worker:dev` (`--watch`) is the alternative.
+
+**Real gap this exposed.** `enqueueBlastDelivery` uses a deterministic job id
+(`blast-<blastJobId>`) with `attempts: 1` and `removeOnFail: { age: 86_400 }`.
+A delivery job that died therefore left a *failed* job sitting under the id it
+would need to reuse, so nothing — not resume, not a restart — could ever get that
+`BlastJob` moving again; the row stayed `RUNNING` with `PENDING` recipients
+forever. `RULES.md` §13 requires startup inspection of incomplete jobs, and that
+did not exist.
+
+**Fix.**
+
+- `src/lib/queue/queues.ts`: extracted `blastDeliveryJobId()` and added
+  `requeueBlastDelivery(blastJobId): "ALREADY_QUEUED" | "REQUEUED" | "LOCKED"`.
+  It inspects the existing job, leaves any live state (`active`/`waiting`/
+  `delayed`/`prioritized`/`waiting-children`) alone, removes only a settled one,
+  and reports `LOCKED` when `Queue.remove` returns 0 because a worker still holds
+  the lock. Nothing is ever double-enqueued.
+- `src/worker/maintenance-runner.ts`: new `requeueOrphanedJobs()` selects at most
+  `CHUNK` (500) `BlastJob`s that are `QUEUED`/`RUNNING`, still have `PENDING` or
+  `RETRYABLE_FAILED` recipients, and pass the same gate the delivery loop applies
+  (user `ACTIVE`, campaign `ACTIVE` and inside its window, device `CONNECTED`),
+  then calls `requeueBlastDelivery` for each. `CLAIMED` rows are deliberately not
+  counted as outstanding — those belong to the lease sweep — and `SENDING` rows
+  belong to reconciliation. Mirroring the gate means a genuinely blocked job is
+  left parked instead of being re-queued every tick. Exported
+  `runStartupRecovery()` runs `reclaimStaleLeases()` then `requeueOrphanedJobs()`.
+- `src/worker/main.ts`: `REQUEUE_ORPHANED_JOBS` added to the repeatable schedule
+  at 120 s, and `runStartupRecovery()` is awaited after `worker.started` inside a
+  try/catch that logs `worker.startup_recovery_failed` and defers to the
+  scheduled sweeps.
+
+**State of job `cc369737-…`.** Queried live: job `RUNNING`, 2 recipients both
+`PENDING`, user `ACTIVE`, campaign `ACTIVE` until 2026-09-10 18:27 — but the
+device is `EXPIRED`. WhatsApp sent `stream:error` `code: 401` with
+`conflict` / `device_removed` (= `DisconnectReason.loggedOut`, i.e. the phone
+unlinked it); the adapter handled that correctly by setting `EXPIRED`, calling
+`clearAuthState(deviceId)` and emitting `requiresReauth`. The sweep requires
+`CONNECTED`, so this job stays parked until the device is re-paired, at which
+point it is picked up within two minutes. No manual DB edit needed.
+
+### Verification
+
+- `npm run typecheck` — exit 0.
+- `npm test` — exit 0, **20 files / 218 tests**. New
+  `src/lib/queue/queues.test.ts` (9 cases) drives `requeueBlastDelivery` through a
+  fake `Queue`: job id shape, enqueue when absent, `ALREADY_QUEUED` for each live
+  state with no remove/add, remove-then-re-add with `{ jobId, attempts: 1 }` for
+  each settled state, and `LOCKED` when `remove` returns 0.
+- `npm run lint` — exit 0.
+- `npm run build` — exit 0, 20/20 static pages, no new warnings (the pre-existing
+  `@next/next/no-img-element` warning in `device-pairing-modal.tsx` is unchanged).
+- **Not** verified: the sweep has not yet re-queued a real job, because no
+  eligible job exists while the only device is `EXPIRED`.
 
 ## Known Gaps
 

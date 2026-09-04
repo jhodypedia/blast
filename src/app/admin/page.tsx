@@ -119,9 +119,9 @@ export default async function AdminOverviewPage() {
               </Button>
             }
           >
-            <p className="text-sm leading-relaxed text-muted-foreground">
+            <p className="text-sm font-bold leading-snug text-foreground">
               Delivery yang ambigu tetap berada di{" "}
-              <span className="font-semibold text-warning">
+              <span className="border-2 border-black bg-warning px-1.5 py-0.5 font-black uppercase text-warning-foreground">
                 RECONCILIATION_REQUIRED
               </span>{" "}
               sampai admin mengonfirmasi atau menghapusnya. Tidak ada pembayaran
@@ -154,23 +154,23 @@ function LinkStat({
     <StaggerItem>
       <Link
         href={href}
-        className="group block h-full rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="group block h-full focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <Card hover className="h-full">
-          <CardContent className="flex items-start justify-between gap-3 p-5 pt-5 sm:p-6 sm:pt-6">
+          <CardContent className="flex items-start justify-between gap-3 p-4 pt-4 sm:p-5 sm:pt-5">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs font-black uppercase tracking-widest text-foreground">
                 {label}
               </p>
-              <p className="mt-2 truncate text-2xl font-bold tracking-tight sm:text-[1.75rem]">
+              <p className="mt-2 truncate text-2xl font-black leading-none tracking-tighter sm:text-[1.75rem]">
                 {value}
               </p>
               {hint ? (
-                <p className="mt-1.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                <p className="mt-1.5 flex items-center gap-1 truncate text-xs font-bold uppercase text-foreground">
                   {hint}
                   <ArrowRight
                     aria-hidden="true"
-                    className="size-3.5 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-0.5"
+                    className="size-3.5 shrink-0 text-primary transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-0.5"
                   />
                 </p>
               ) : null}

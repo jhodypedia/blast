@@ -33,10 +33,10 @@ export function RegisterForm() {
   if (state.status === "success") {
     return (
       <div className="space-y-4 text-center">
-        <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-success/12 text-success">
+        <span className="mx-auto flex size-12 items-center justify-center border-4 border-black bg-success text-success-foreground">
           <CheckCircle2 className="size-6" aria-hidden="true" />
         </span>
-        <p className="text-sm text-muted-foreground">{state.message}</p>
+        <p className="text-sm font-bold text-foreground">{state.message}</p>
         <Button asChild className="w-full">
           <Link href="/login">Go to sign in</Link>
         </Button>
@@ -49,14 +49,14 @@ export function RegisterForm() {
       action={formAction}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      transition={{ duration: 0.18, ease: "linear" }}
       className="space-y-5"
       noValidate
     >
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -74,7 +74,10 @@ export function RegisterForm() {
           aria-invalid={Boolean(fieldError("name"))}
         />
         {fieldError("name") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("name")}
           </p>
         ) : null}
@@ -92,7 +95,10 @@ export function RegisterForm() {
           aria-invalid={Boolean(fieldError("email"))}
         />
         {fieldError("email") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("email")}
           </p>
         ) : null}
@@ -110,11 +116,14 @@ export function RegisterForm() {
           aria-invalid={Boolean(fieldError("password"))}
           aria-describedby="password-hint"
         />
-        <p id="password-hint" className="text-xs text-muted-foreground">
+        <p id="password-hint" className="text-xs font-bold text-foreground">
           At least 10 characters with upper case, lower case and a number.
         </p>
         {fieldError("password") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("password")}
           </p>
         ) : null}
@@ -132,24 +141,27 @@ export function RegisterForm() {
           aria-invalid={Boolean(fieldError("confirmPassword"))}
         />
         {fieldError("confirmPassword") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("confirmPassword")}
           </p>
         ) : null}
       </div>
 
-      <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
+      <div className="flex items-start gap-3 border-4 border-black bg-surface p-3">
         <input
           id="acceptTerms"
           name="acceptTerms"
           type="checkbox"
           required
           disabled={pending}
-          className="mt-0.5 size-4 rounded border-input"
+          className="mt-0.5 size-4 border-2 border-black accent-primary"
         />
         <Label
           htmlFor="acceptTerms"
-          className="text-xs font-normal leading-relaxed text-muted-foreground"
+          className="text-xs font-bold normal-case leading-snug tracking-normal text-foreground"
         >
           I confirm that I will only send messages to recipients who have given
           valid consent or have an existing service relationship, and that I will
@@ -157,7 +169,10 @@ export function RegisterForm() {
         </Label>
       </div>
       {fieldError("acceptTerms") ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p
+          role="alert"
+          className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+        >
           {fieldError("acceptTerms")}
         </p>
       ) : null}
@@ -169,12 +184,9 @@ export function RegisterForm() {
         Create account
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-sm font-bold uppercase text-foreground">
         Already registered?{" "}
-        <Link
-          href="/login"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
+        <Link href="/login" className="font-black uppercase">
           Sign in
         </Link>
       </p>

@@ -84,21 +84,23 @@ export function DeviceCard({
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      transition={{ duration: 0.18, ease: "linear" }}
     >
       <Card>
-        <CardContent className="space-y-5 p-5 sm:p-6">
+        <CardContent className="space-y-5 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 ring-1 ring-primary/20">
+              <span className="flex size-11 shrink-0 items-center justify-center border-4 border-black bg-primary">
                 <Smartphone
-                  className="size-5 text-primary"
+                  className="size-5 text-primary-foreground"
                   aria-hidden="true"
                 />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-bold">{device.label}</p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
+                <p className="truncate text-sm font-black uppercase">
+                  {device.label}
+                </p>
+                <p className="mt-1 truncate text-xs font-bold text-foreground">
                   {device.maskedNumber ?? "Belum terhubung ke WhatsApp"}
                 </p>
               </div>
@@ -113,7 +115,7 @@ export function DeviceCard({
               Hubungkan perangkat
             </Button>
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/8 px-3 py-2 text-xs font-semibold text-success">
+            <div className="flex items-center gap-2 border-4 border-black bg-success px-3 py-2 text-xs font-black uppercase text-success-foreground">
               <Check className="size-4" aria-hidden="true" /> Perangkat siap menjalankan blast
             </div>
           )}
@@ -156,7 +158,7 @@ function DeviceControls({
   setConfirmRemove: (value: boolean) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 border-t border-border/70 pt-4">
+    <div className="flex flex-wrap gap-2 border-t-4 border-black pt-4">
       <form action={action} onSubmit={() => { if (!connected) onReconnect(); }}>
         <input type="hidden" name="deviceId" value={deviceId} />
         <input
@@ -187,7 +189,7 @@ function DeviceControls({
         >
           <input type="hidden" name="deviceId" value={deviceId} />
           <input type="hidden" name="action" value="REMOVE" />
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs font-black uppercase text-foreground">
             Hapus perangkat ini?
           </span>
           <Button

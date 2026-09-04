@@ -84,6 +84,68 @@ async function reclaimStaleLeases(): Promise<void> {
   }
 }
 
+/**
+ * Re-enqueues delivery for jobs the queue has lost (RULES.md §13).
+ *
+ * A `QUEUED`/`RUNNING` blast job whose BullMQ job crashed, was evicted, or
+ * exhausted its single attempt has no other way back: the deterministic job id
+ * makes a naive re-add a silent no-op while the dead key lingers.
+ *
+ * Deliberately conservative:
+ * - Only `PENDING`/`RETRYABLE_FAILED` recipients count as outstanding work.
+ *   `CLAIMED` belongs to the lease sweep and `SENDING` to reconciliation, so a
+ *   possibly-delivered message is never resurrected here.
+ * - Only jobs that can actually progress are re-queued. The preconditions match
+ *   the delivery loop's gate, so a job blocked by an inactive user, a closed
+ *   campaign window, or an offline device is left alone until the blocker clears
+ *   rather than being re-queued on every tick.
+ * - Nothing is enqueued while a worker still holds the queue job.
+ */
+async function requeueOrphanedJobs(): Promise<void> {
+  const log = logger("cleanup");
+  const now = new Date();
+
+  const candidates = await prisma.blastJob.findMany({
+    where: {
+      status: { in: ["QUEUED", "RUNNING"] },
+      recipients: {
+        some: { status: { in: ["PENDING", "RETRYABLE_FAILED"] } },
+      },
+      user: { status: "ACTIVE", deletedAt: null },
+      campaign: { status: "ACTIVE", scheduledEndAt: { gte: now } },
+      device: { status: "CONNECTED", deletedAt: null },
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+    take: CHUNK,
+  });
+
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const { requeueBlastDelivery } = await import("@/lib/queue/queues");
+
+  let requeued = 0;
+
+  for (const job of candidates) {
+    if ((await requeueBlastDelivery(job.id)) === "REQUEUED") {
+      requeued += 1;
+    }
+  }
+
+  if (requeued > 0) {
+    log.info(
+      {
+        event: "cleanup.orphaned_jobs",
+        inspected: candidates.length,
+        requeued,
+      },
+      "Orphaned blast jobs re-enqueued",
+    );
+  }
+}
+
 /** Expires campaigns whose schedule window has closed. */
 async function expireCampaigns(): Promise<void> {
   const now = new Date();
@@ -191,6 +253,9 @@ export async function processMaintenance(
     case "RECLAIM_STALE_LEASES":
       await reclaimStaleLeases();
       return;
+    case "REQUEUE_ORPHANED_JOBS":
+      await requeueOrphanedJobs();
+      return;
     case "EXPIRE_CAMPAIGNS":
       await expireCampaigns();
       return;
@@ -201,4 +266,16 @@ export async function processMaintenance(
       await sweepDevices();
       return;
   }
+}
+
+/**
+ * Startup recovery pass (RULES.md §13).
+ *
+ * Runs the two sweeps that unstick work abandoned by a previous process before
+ * the schedulers reach their first tick: expired leases are returned to the pool
+ * and delivery jobs the queue has lost are re-enqueued.
+ */
+export async function runStartupRecovery(): Promise<void> {
+  await reclaimStaleLeases();
+  await requeueOrphanedJobs();
 }

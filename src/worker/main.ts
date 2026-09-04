@@ -16,7 +16,7 @@ import type {
 import { runBlastJob } from "@/worker/delivery-runner";
 import { processTargetImport } from "@/worker/target-import-runner";
 import { processDeviceSession } from "@/worker/device-session-runner";
-import { processMaintenance } from "@/worker/maintenance-runner";
+import { processMaintenance, runStartupRecovery } from "@/worker/maintenance-runner";
 
 /**
  * Worker entry point (RULES.md §13).
@@ -122,6 +122,7 @@ async function scheduleMaintenance(): Promise<void> {
 
   const schedules: Array<{ task: MaintenanceJobData["task"]; every: number }> = [
     { task: "RECLAIM_STALE_LEASES", every: 60_000 },
+    { task: "REQUEUE_ORPHANED_JOBS", every: 120_000 },
     { task: "EXPIRE_CAMPAIGNS", every: 300_000 },
     { task: "SWEEP_DEVICES", every: 3_600_000 },
     { task: "PRUNE_LOGS", every: 86_400_000 },
@@ -160,6 +161,20 @@ async function main(): Promise<void> {
     { event: "worker.started", workerId: serverEnv().WORKER_ID },
     "Worker process started",
   );
+
+  // Recover work abandoned by a previous process before the first scheduled
+  // sweep would fire. Never fatal: a failure here must not stop the workers.
+  try {
+    await runStartupRecovery();
+  } catch (error: unknown) {
+    log.error(
+      {
+        event: "worker.startup_recovery_failed",
+        reason: error instanceof Error ? error.message : "unknown",
+      },
+      "Startup recovery pass failed; scheduled sweeps will retry",
+    );
+  }
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info({ event: "worker.shutdown", signal }, "Shutting down workers");

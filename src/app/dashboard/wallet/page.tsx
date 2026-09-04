@@ -185,20 +185,20 @@ export default async function WalletPage() {
             <Stagger className="space-y-3">
               {withdrawals.map((row) => (
                 <StaggerItem key={row.id}>
-                  <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/60 p-4 transition-colors hover:border-primary/35 hover:bg-surface sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 border-4 border-black bg-surface p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground">
+                      <p className="text-sm font-black uppercase text-foreground">
                         {formatMoney(row.netAmount, row.currency)}{" "}
-                        <span className="text-xs font-normal text-muted-foreground">
+                        <span className="text-xs font-bold text-foreground">
                           net of {formatMoney(row.fee, row.currency)} fee
                         </span>
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                         {row.providerName} · {row.accountMasked} ·{" "}
                         {row.createdAt.toISOString().slice(0, 10)}
                       </p>
                       {row.rejectionReason ? (
-                        <p className="mt-1.5 text-xs font-medium text-destructive">
+                        <p className="mt-1.5 border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground">
                           {row.rejectionReason}
                         </p>
                       ) : null}
@@ -234,12 +234,12 @@ export default async function WalletPage() {
             <Stagger className="space-y-2">
               {earnings.map((row) => (
                 <StaggerItem key={row.id}>
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface/60 px-4 py-3 transition-colors hover:border-success/35 hover:bg-surface">
+                  <div className="flex items-center justify-between gap-3 border-4 border-black bg-surface px-4 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">
+                      <p className="truncate text-sm font-black uppercase text-foreground">
                         {row.campaignName ?? "Campaign"}
                       </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 text-xs font-bold text-foreground">
                         {row.createdAt
                           .toISOString()
                           .slice(0, 16)
@@ -247,7 +247,7 @@ export default async function WalletPage() {
                         UTC
                       </p>
                     </div>
-                    <span className="shrink-0 text-sm font-bold text-success">
+                    <span className="shrink-0 border-2 border-black bg-success px-2 py-1 text-sm font-black text-success-foreground">
                       +{formatMoney(row.amount, row.currency)}
                     </span>
                   </div>

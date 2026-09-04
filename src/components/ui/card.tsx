@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 /**
  * Card surface used across dashboards, forms and list items.
  *
- * Depth comes from a solid border plus a flat shadow (no gradients). `hover`
- * opts into the shared lift + emerald border treatment for cards that are
- * themselves interactive (links, selectable rows).
+ * Brutalist treatment: raw white block, 4px black border, hard unblurred drop
+ * shadow. `hover` opts into the shared slam-into-the-shadow lift for cards that
+ * are themselves interactive (links, selectable rows).
  */
 function Card({
   className,
@@ -18,9 +18,8 @@ function Card({
     <div
       data-slot="card"
       className={cn(
-        "relative rounded-xl border border-border bg-card text-card-foreground shadow-panel",
-        hover &&
-          "lift hover:border-primary/45 hover:bg-surface hover:shadow-lift",
+        "relative border-4 border-black bg-card text-card-foreground shadow-panel",
+        hover && "lift hover:bg-surface",
         className,
       )}
       {...props}
@@ -32,7 +31,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-header"
-      className={cn("flex flex-col gap-1.5 p-5 sm:p-6", className)}
+      className={cn("flex flex-col gap-1.5 p-4 sm:p-5", className)}
       {...props}
     />
   );
@@ -43,7 +42,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
     <h3
       data-slot="card-title"
       className={cn(
-        "text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg",
+        "text-base font-black uppercase leading-tight tracking-tight text-foreground sm:text-lg",
         className,
       )}
       {...props}
@@ -55,7 +54,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
       data-slot="card-description"
-      className={cn("text-sm leading-relaxed text-muted-foreground", className)}
+      className={cn("text-sm leading-snug text-foreground", className)}
       {...props}
     />
   );
@@ -65,7 +64,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("p-5 pt-0 sm:p-6 sm:pt-0", className)}
+      className={cn("p-4 pt-0 sm:p-5 sm:pt-0", className)}
       {...props}
     />
   );
@@ -76,7 +75,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex flex-col gap-3 border-t border-border/70 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6",
+        "flex flex-col gap-3 border-t-4 border-black p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5",
         className,
       )}
       {...props}
@@ -87,14 +86,15 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
 /**
  * Icon tile used in card headers and stat cards. `tone` maps to the semantic
  * colour scale so icons stay meaningful rather than decorative (RULES.md §18).
+ * Every tone is a flat, fully saturated fill inside a black box.
  */
 const TILE_TONES = {
-  primary: "bg-primary/12 text-primary ring-primary/25",
-  success: "bg-success/12 text-success ring-success/25",
-  warning: "bg-warning/15 text-warning ring-warning/25",
-  danger: "bg-destructive/12 text-destructive ring-destructive/25",
-  info: "bg-info/12 text-info ring-info/25",
-  neutral: "bg-surface-strong text-muted-foreground ring-border",
+  primary: "bg-primary text-primary-foreground",
+  success: "bg-success text-success-foreground",
+  warning: "bg-warning text-warning-foreground",
+  danger: "bg-destructive text-destructive-foreground",
+  info: "bg-info text-info-foreground",
+  neutral: "bg-surface-strong text-foreground",
 } as const;
 
 export type IconTileTone = keyof typeof TILE_TONES;
@@ -109,7 +109,7 @@ function IconTile({
       data-slot="icon-tile"
       aria-hidden="true"
       className={cn(
-        "inline-flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform duration-200",
+        "inline-flex size-10 shrink-0 items-center justify-center border-4 border-black",
         TILE_TONES[tone],
         className,
       )}

@@ -100,7 +100,7 @@ export default async function JobDetailPage({
           description={`${job.percent}% of ${job.quotaTotal} allocated recipients resolved.`}
           icon={<Activity className="size-5" />}
         >
-          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold uppercase text-foreground">
             <span className="inline-flex items-center gap-1.5">
               <Smartphone aria-hidden="true" className="size-3.5 text-primary" />
               {job.deviceLabel}
@@ -113,7 +113,7 @@ export default async function JobDetailPage({
               <Coins aria-hidden="true" className="size-3.5 text-success" />
               {formatMoney(job.payoutPerSend, job.currency)} per send
             </span>
-            <span className="ml-auto text-sm font-bold text-primary">
+            <span className="ml-auto text-sm font-black text-primary">
               {job.percent}%
             </span>
           </div>
@@ -183,7 +183,7 @@ export default async function JobDetailPage({
             />
           </dl>
 
-          <div className="mt-5 border-t border-border/70 pt-5">
+          <div className="mt-5 border-t-4 border-black pt-5">
             <JobControls
               blastJobId={job.id}
               status={job.status}
@@ -208,11 +208,11 @@ export default async function JobDetailPage({
             <Stagger className="space-y-2">
               {events.map((event, index) => (
                 <StaggerItem key={`${event.recipientRef}-${index}`}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface/60 px-3.5 py-2.5 text-xs transition-colors hover:border-primary/30 hover:bg-surface">
-                    <span className="truncate font-mono text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-4 border-black bg-surface px-3.5 py-2.5 text-xs transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-accent">
+                    <span className="truncate font-mono font-bold text-foreground">
                       {event.recipientRef.slice(0, 12)}…
                     </span>
-                    <span className="font-semibold text-foreground">
+                    <span className="font-black uppercase text-foreground">
                       {event.event}
                     </span>
                     <Badge
@@ -228,7 +228,7 @@ export default async function JobDetailPage({
                     >
                       {event.status}
                     </Badge>
-                    <span className="ml-auto font-mono text-muted-foreground">
+                    <span className="ml-auto font-mono font-bold text-foreground">
                       {event.createdAt.toISOString().slice(11, 19)} UTC
                     </span>
                   </div>
@@ -255,20 +255,22 @@ function Stat({
   icon: React.ReactNode;
 }) {
   const tones = {
-    success: "border-success/25 bg-success/8 text-success",
-    danger: "border-destructive/25 bg-destructive/8 text-destructive",
-    warning: "border-warning/25 bg-warning/8 text-warning",
-    info: "border-info/25 bg-info/8 text-info",
-    neutral: "border-border bg-surface/60 text-muted-foreground",
+    success: "bg-success text-success-foreground",
+    danger: "bg-destructive text-destructive-foreground",
+    warning: "bg-warning text-warning-foreground",
+    info: "bg-info text-info-foreground",
+    neutral: "bg-surface text-foreground",
   } as const;
 
   return (
-    <div className={cn("rounded-lg border p-3", tones[tone])}>
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+    <div className={cn("border-4 border-black p-3", tones[tone])}>
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
+      <dd className="mt-1 text-lg font-black leading-none tracking-tighter">
+        {value}
+      </dd>
     </div>
   );
 }

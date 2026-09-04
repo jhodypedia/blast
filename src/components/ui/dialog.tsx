@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 /**
  * Modal dialog.
  *
- * Backdrop uses the solid dark-green overlay plus a blur; the panel fades and
- * scales in. Radix handles focus trapping, `Escape`, and `aria-modal`, so
- * keyboard users get correct semantics for free.
+ * Brutalist treatment: fully opaque black backdrop (no blur), panel is a raw
+ * white block with a 4px black border and a hard offset shadow. Radix handles
+ * focus trapping, `Escape`, and `aria-modal`, so keyboard users get correct
+ * semantics for free.
  */
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -26,12 +27,7 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
-      className={cn(
-        "fixed inset-0 z-50 overlay-forest backdrop-blur-sm",
-        "data-[state=open]:animate-in data-[state=open]:fade-in-0",
-        "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
-        className,
-      )}
+      className={cn("fixed inset-0 z-50 overlay-forest", className)}
       {...props}
     />
   );
@@ -49,9 +45,7 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2",
-          "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-border-strong bg-popover p-5 text-popover-foreground shadow-lift sm:p-6",
-          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-          "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          "max-h-[calc(100dvh-2rem)] overflow-y-auto border-4 border-black bg-popover p-4 text-popover-foreground shadow-lift sm:p-6",
           className,
         )}
         {...props}
@@ -59,7 +53,7 @@ function DialogContent({
         {children}
         <DialogPrimitive.Close
           aria-label="Close dialog"
-          className="absolute right-3 top-3 inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="absolute right-3 top-3 inline-flex size-11 items-center justify-center border-4 border-black bg-background text-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           <X aria-hidden="true" className="size-4" />
         </DialogPrimitive.Close>
@@ -72,7 +66,10 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("space-y-1.5 pr-10", className)}
+      className={cn(
+        "space-y-1.5 border-b-4 border-black pb-3 pr-12",
+        className,
+      )}
       {...props}
     />
   );
@@ -83,7 +80,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-footer"
       className={cn(
-        "mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "mt-6 flex flex-col-reverse gap-2 border-t-4 border-black pt-4 sm:flex-row sm:justify-end",
         className,
       )}
       {...props}
@@ -98,7 +95,10 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg font-bold tracking-tight", className)}
+      className={cn(
+        "text-lg font-black uppercase tracking-tight text-foreground",
+        className,
+      )}
       {...props}
     />
   );
@@ -111,7 +111,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-sm leading-relaxed text-muted-foreground", className)}
+      className={cn("text-sm leading-snug text-foreground", className)}
       {...props}
     />
   );

@@ -58,36 +58,48 @@ export default async function DevicesPage() {
       />
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <div className="group relative overflow-hidden rounded-2xl border border-success/25 bg-success/8 p-4 shadow-panel">
+        <div className="border-4 border-black bg-success p-4 text-success-foreground shadow-panel">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-success/15 text-success">
+            <span className="flex size-10 items-center justify-center border-4 border-black bg-background text-foreground">
               <Wifi className="size-5" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status jaringan</p>
-              <p className="mt-1 text-sm font-bold text-success">Sistem siap digunakan</p>
+              <p className="text-xs font-black uppercase tracking-widest">
+                Status jaringan
+              </p>
+              <p className="mt-1 text-sm font-black uppercase">
+                Sistem siap digunakan
+              </p>
             </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-primary/25 bg-primary/8 p-4 shadow-panel">
+        <div className="border-4 border-black bg-primary p-4 text-primary-foreground shadow-panel">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <span className="flex size-10 items-center justify-center border-4 border-black bg-background text-foreground">
               <CircleDot className="size-5" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Slot tersedia</p>
-              <p className="mt-1 text-sm font-bold">{maxDevices - devices.length} dari {maxDevices} slot</p>
+              <p className="text-xs font-black uppercase tracking-widest">
+                Slot tersedia
+              </p>
+              <p className="mt-1 text-sm font-black uppercase">
+                {maxDevices - devices.length} dari {maxDevices} slot
+              </p>
             </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-info/25 bg-info/8 p-4 shadow-panel">
+        <div className="border-4 border-black bg-info p-4 text-info-foreground shadow-panel">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-info/15 text-info">
+            <span className="flex size-10 items-center justify-center border-4 border-black bg-background text-foreground">
               <CheckCircle2 className="size-5" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Perangkat aktif</p>
-              <p className="mt-1 text-sm font-bold">{connected} siap blast</p>
+              <p className="text-xs font-black uppercase tracking-widest">
+                Perangkat aktif
+              </p>
+              <p className="mt-1 text-sm font-black uppercase">
+                {connected} siap blast
+              </p>
             </div>
           </div>
         </div>

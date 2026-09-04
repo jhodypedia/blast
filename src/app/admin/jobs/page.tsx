@@ -75,7 +75,7 @@ export default async function AdminJobsPage() {
             {jobs.map((job) => (
               <StaggerItem key={job.id}>
                 <Card hover>
-                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                  <CardContent className="p-4 pt-4 sm:p-5 sm:pt-5">
                     <div className="flex flex-wrap items-start gap-3.5">
                       <IconTile
                         tone={
@@ -92,10 +92,10 @@ export default async function AdminJobsPage() {
                         <Send className="size-5" />
                       </IconTile>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-bold tracking-tight">
+                        <p className="truncate text-base font-black uppercase tracking-tight">
                           {job.campaignName}
                         </p>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-foreground">
                           <span className="inline-flex items-center gap-1.5">
                             <UserCog
                               aria-hidden="true"
@@ -132,8 +132,8 @@ export default async function AdminJobsPage() {
                     </div>
 
                     <div className="mt-4">
-                      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
-                        <span className="text-muted-foreground">Progress</span>
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-black uppercase tracking-widest">
+                        <span className="text-foreground">Progress</span>
                         <span className="text-primary">{job.percent}%</span>
                       </div>
                       <Progress
@@ -178,7 +178,7 @@ export default async function AdminJobsPage() {
                     </dl>
 
                     {LIVE.includes(job.status) ? (
-                      <div className="mt-4 border-t border-border/70 pt-4">
+                      <div className="mt-4 border-t-4 border-black pt-4">
                         <AdminJobStopButton blastJobId={job.id} />
                       </div>
                     ) : null}
@@ -206,22 +206,22 @@ function Metric({
   icon: React.ReactNode;
 }) {
   const tones = {
-    success: "border-success/25 bg-success/8 text-success",
-    danger: "border-destructive/25 bg-destructive/8 text-destructive",
-    info: "border-info/25 bg-info/8 text-info",
+    success: "bg-success text-success-foreground",
+    danger: "bg-destructive text-destructive-foreground",
+    info: "bg-info text-info-foreground",
   } as const;
 
   return (
     <div
-      className={`rounded-lg border p-3 ${
-        tone ? tones[tone] : "border-border bg-surface/60 text-muted-foreground"
+      className={`border-4 border-black p-3 ${
+        tone ? tones[tone] : "bg-surface text-foreground"
       }`}
     >
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 truncate text-sm font-bold text-foreground">
+      <dd className="mt-1 truncate text-sm font-black leading-none tracking-tight">
         {value}
       </dd>
     </div>

@@ -51,7 +51,7 @@ export function WithdrawalForm({
 
   if (disabled) {
     return (
-      <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
+      <p className="border-4 border-black bg-warning p-3 text-xs font-bold text-warning-foreground">
         {disabledReason ?? "Withdrawals are unavailable right now."}
       </p>
     );
@@ -67,25 +67,25 @@ export function WithdrawalForm({
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
         </div>
       ) : null}
 
-      <dl className="grid grid-cols-3 gap-2 text-xs">
-        <div>
-          <dt className="text-muted-foreground">Available</dt>
-          <dd className="font-semibold text-success">{availableLabel}</dd>
+      <dl className="grid grid-cols-3 border-4 border-black bg-surface text-xs">
+        <div className="border-r-2 border-black p-2">
+          <dt className="font-black uppercase tracking-widest text-foreground">Available</dt>
+          <dd className="mt-1 font-black text-success">{availableLabel}</dd>
         </div>
-        <div>
-          <dt className="text-muted-foreground">Minimum</dt>
-          <dd className="font-medium">{minAmountLabel}</dd>
+        <div className="border-r-2 border-black p-2">
+          <dt className="font-black uppercase tracking-widest text-foreground">Minimum</dt>
+          <dd className="mt-1 font-black">{minAmountLabel}</dd>
         </div>
-        <div>
-          <dt className="text-muted-foreground">Fee</dt>
-          <dd className="font-medium">{feeLabel}</dd>
+        <div className="p-2">
+          <dt className="font-black uppercase tracking-widest text-foreground">Fee</dt>
+          <dd className="mt-1 font-black">{feeLabel}</dd>
         </div>
       </dl>
 
@@ -101,7 +101,10 @@ export function WithdrawalForm({
           aria-invalid={Boolean(fieldError("amount"))}
         />
         {fieldError("amount") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("amount")}
           </p>
         ) : null}
@@ -119,7 +122,10 @@ export function WithdrawalForm({
           aria-invalid={Boolean(fieldError("password"))}
         />
         {fieldError("password") ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("password")}
           </p>
         ) : null}
@@ -127,13 +133,13 @@ export function WithdrawalForm({
 
       <TurnstileWidget action="withdrawal" />
 
-      <label className="flex min-h-11 items-start gap-2 text-xs text-muted-foreground">
+      <label className="flex min-h-11 items-start gap-2 border-2 border-black bg-surface p-2 text-xs font-bold text-foreground">
         <input
           type="checkbox"
           name="confirm"
           checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)}
-          className="mt-0.5 size-4"
+          className="mt-0.5 size-4 border-2 border-black accent-primary"
           disabled={pending}
         />
         <span>
@@ -142,7 +148,10 @@ export function WithdrawalForm({
         </span>
       </label>
       {fieldError("confirm") ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p
+          role="alert"
+          className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+        >
           {fieldError("confirm")}
         </p>
       ) : null}

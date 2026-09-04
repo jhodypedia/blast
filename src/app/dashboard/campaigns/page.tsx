@@ -74,7 +74,7 @@ export default async function UserCampaignsPage() {
             Pair and connect a device before starting a blast job.{" "}
             <Link
               href="/dashboard/devices"
-              className="font-semibold text-primary underline-offset-4 hover:underline"
+              className="font-black uppercase"
             >
               Manage devices
             </Link>
@@ -100,7 +100,7 @@ export default async function UserCampaignsPage() {
             {campaigns.map((campaign) => (
               <StaggerItem key={campaign.id}>
                 <Card hover className="flex h-full flex-col">
-                  <div className="flex items-start gap-3.5 border-b border-border/70 p-5 sm:p-6">
+                  <div className="flex items-start gap-3.5 border-b-4 border-black bg-surface p-4 sm:p-5">
                     <IconTile
                       tone={campaign.startable ? "success" : "warning"}
                       className="mt-0.5"
@@ -109,7 +109,7 @@ export default async function UserCampaignsPage() {
                     </IconTile>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
-                        <h2 className="truncate text-base font-bold tracking-tight sm:text-lg">
+                        <h2 className="truncate text-base sm:text-lg">
                           {campaign.name}
                         </h2>
                         <Badge
@@ -118,19 +118,19 @@ export default async function UserCampaignsPage() {
                           {campaign.startable ? "Available" : "Quota used"}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      <p className="mt-1 text-sm font-bold leading-snug text-foreground">
                         {campaign.description}
                       </p>
                     </div>
                   </div>
 
-                  <CardContent className="flex flex-1 flex-col p-5 pt-4 sm:p-6 sm:pt-5">
+                  <CardContent className="flex flex-1 flex-col p-4 pt-4 sm:p-5 sm:pt-5">
                     <dl>
                       <DetailRow
                         label="Payout per send"
                         icon={<Coins className="size-4 text-success" />}
                         value={
-                          <span className="font-bold text-success">
+                          <span className="font-black text-success">
                             {formatMoney(
                               campaign.payoutPerSend,
                               campaign.currency,
@@ -158,7 +158,7 @@ export default async function UserCampaignsPage() {
                       />
                     </dl>
 
-                    <div className="mt-5 border-t border-border/70 pt-5">
+                    <div className="mt-5 border-t-4 border-black pt-5">
                       <StartBlastForm
                         campaignId={campaign.id}
                         devices={connectedDevices}

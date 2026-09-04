@@ -43,14 +43,14 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       action={formAction}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      transition={{ duration: 0.18, ease: "linear" }}
       className="space-y-5"
       noValidate
     >
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -61,7 +61,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         <Label htmlFor="email">Email</Label>
         <div className="relative">
           <Mail
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-foreground"
             aria-hidden="true"
           />
           <Input
@@ -77,7 +77,11 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           />
         </div>
         {fieldError("email") ? (
-          <p id="email-error" role="alert" className="text-xs text-destructive">
+          <p
+            id="email-error"
+            role="alert"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+          >
             {fieldError("email")}
           </p>
         ) : null}
@@ -87,7 +91,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         <Label htmlFor="password">Password</Label>
         <div className="relative">
           <Lock
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-foreground"
             aria-hidden="true"
           />
           <Input
@@ -108,7 +112,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           <p
             id="password-error"
             role="alert"
-            className="text-xs text-destructive"
+            className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
           >
             {fieldError("password")}
           </p>
@@ -122,12 +126,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         Sign in
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-sm font-bold uppercase text-foreground">
         No account yet?{" "}
-        <Link
-          href="/register"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
+        <Link href="/register" className="font-black uppercase">
           Create one
         </Link>
       </p>

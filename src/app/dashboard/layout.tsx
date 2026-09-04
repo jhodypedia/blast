@@ -47,7 +47,7 @@ const NAV: NavItem[] = [
   {
     href: "/dashboard/profile",
     label: "Profile",
-    icon: <UserCog className="size-4 text-muted-foreground" />,
+    icon: <UserCog className="size-4 text-foreground" />,
   },
 ];
 

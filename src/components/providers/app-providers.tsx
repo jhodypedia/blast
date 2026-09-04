@@ -14,8 +14,8 @@ import { CheckCircle2, CircleAlert, Info, TriangleAlert } from "lucide-react";
  * status). It never caches authorization decisions — those are re-checked on the
  * server for every mutation.
  *
- * The product ships a single dark-green theme, so the theme provider is forced
- * to `dark`; no light palette is generated and no toggle is exposed.
+ * The product ships a single brutalist palette, so the theme provider is forced
+ * to one theme; no alternate palette is generated and no toggle is exposed.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -44,7 +44,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <Toaster
           position="top-right"
           closeButton
-          theme="dark"
+          theme="light"
           // Coloured semantic icons, slide-in from the top-right (RULES.md §18).
           icons={{
             success: (
@@ -67,14 +67,15 @@ export function AppProviders({ children }: { children: ReactNode }) {
           toastOptions={{
             classNames: {
               toast:
-                "!bg-popover !text-popover-foreground !border-border !shadow-[var(--shadow-lift)] !rounded-xl",
-              description: "!text-muted-foreground",
+                "!bg-popover !text-popover-foreground !border-4 !border-black !shadow-[var(--shadow-lift)] !font-mono",
+              title: "!font-black !uppercase !tracking-wide",
+              description: "!text-foreground",
               actionButton:
-                "!bg-primary !text-primary-foreground !rounded-md !font-semibold",
+                "!bg-primary !text-primary-foreground !border-2 !border-black !font-black !uppercase",
               cancelButton:
-                "!bg-secondary !text-secondary-foreground !rounded-md",
+                "!bg-secondary !text-secondary-foreground !border-2 !border-black !font-black !uppercase",
               closeButton:
-                "!bg-surface-strong !text-muted-foreground !border-border hover:!text-foreground",
+                "!bg-surface-strong !text-foreground !border-2 !border-black",
             },
           }}
         />

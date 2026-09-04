@@ -52,7 +52,10 @@ export function Field({
       <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p
+          role="alert"
+          className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+        >
           {error}
         </p>
       ) : null}

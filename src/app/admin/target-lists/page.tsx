@@ -107,7 +107,7 @@ export default async function AdminTargetListsPage() {
             {lists.map((list) => (
               <StaggerItem key={list.id}>
                 <Card hover>
-                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                  <CardContent className="p-4 pt-4 sm:p-5 sm:pt-5">
                     <div className="flex flex-wrap items-start gap-3.5">
                       <IconTile
                         tone={
@@ -122,10 +122,10 @@ export default async function AdminTargetListsPage() {
                         <FileSpreadsheet className="size-5" />
                       </IconTile>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-bold tracking-tight">
+                        <p className="truncate text-base font-black uppercase tracking-tight">
                           {list.name}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {list.originalFileName} ·{" "}
                           {list.createdAt.toISOString().slice(0, 10)}
                         </p>
@@ -178,7 +178,7 @@ export default async function AdminTargetListsPage() {
                     ) : null}
 
                     {list.status !== "ARCHIVED" ? (
-                      <div className="mt-4 border-t border-border/70 pt-4">
+                      <div className="mt-4 border-t-4 border-black pt-4">
                         <ArchiveTargetListButton targetListId={list.id} />
                       </div>
                     ) : null}
@@ -206,23 +206,25 @@ function Metric({
   icon: React.ReactNode;
 }) {
   const tones = {
-    success: "border-success/25 bg-success/8 text-success",
-    danger: "border-destructive/25 bg-destructive/8 text-destructive",
-    warning: "border-warning/25 bg-warning/8 text-warning",
-    info: "border-info/25 bg-info/8 text-info",
+    success: "bg-success text-success-foreground",
+    danger: "bg-destructive text-destructive-foreground",
+    warning: "bg-warning text-warning-foreground",
+    info: "bg-info text-info-foreground",
   } as const;
 
   return (
     <div
-      className={`rounded-lg border p-3 ${
-        tone ? tones[tone] : "border-border bg-surface/60 text-muted-foreground"
+      className={`border-4 border-black p-3 ${
+        tone ? tones[tone] : "bg-surface text-foreground"
       }`}
     >
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 text-lg font-bold text-foreground">{value}</dd>
+      <dd className="mt-1 text-lg font-black leading-none tracking-tighter">
+        {value}
+      </dd>
     </div>
   );
 }

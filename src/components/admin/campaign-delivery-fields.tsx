@@ -37,10 +37,12 @@ export function CampaignDeliveryFields({
   return (
     <>
       <fieldset className="space-y-4" disabled={pending}>
-        <legend className="text-sm font-semibold">Targeting and payout</legend>
+        <legend className="text-sm font-black uppercase tracking-widest">
+          Targeting and payout
+        </legend>
 
         {lockEconomics ? (
-          <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
+          <p className="border-4 border-black bg-warning p-3 text-xs font-bold text-warning-foreground">
             Recipients already exist for this campaign, so the target list, payout
             and currency can no longer change.
           </p>
@@ -57,7 +59,7 @@ export function CampaignDeliveryFields({
             required
             defaultValue={values.targetListId}
             disabled={pending || lockEconomics}
-            className="flex h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
           >
             <option value="">Select a list</option>
             {targetLists.map((list) => (
@@ -97,26 +99,31 @@ export function CampaignDeliveryFields({
         </div>
 
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Allowed speeds</legend>
+          <legend className="text-xs font-black uppercase tracking-widest">
+            Allowed speeds
+          </legend>
           <div className="flex flex-wrap gap-4">
             {SPEED_OPTIONS.map((speed) => (
               <label
                 key={speed}
-                className="flex min-h-11 items-center gap-2 text-sm"
+                className="flex min-h-11 items-center gap-2 border-2 border-black bg-background px-3 text-sm font-black uppercase"
               >
                 <input
                   type="checkbox"
                   name="allowedSpeeds"
                   value={speed}
                   defaultChecked={values.allowedSpeeds.includes(speed)}
-                  className="size-4"
+                  className="size-4 border-2 border-black accent-primary"
                 />
                 {speed}s
               </label>
             ))}
           </div>
           {fieldError("allowedSpeeds") ? (
-            <p role="alert" className="text-xs text-destructive">
+            <p
+              role="alert"
+              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+            >
               {fieldError("allowedSpeeds")}
             </p>
           ) : null}
@@ -175,7 +182,7 @@ export function CampaignDeliveryFields({
             id="deviceModePolicy"
             name="deviceModePolicy"
             defaultValue={values.deviceModePolicy}
-            className="flex h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
           >
             <option value="SINGLE_DEVICE">One device per job</option>
             <option value="ALL_DEVICES">Any connected device</option>
@@ -184,7 +191,7 @@ export function CampaignDeliveryFields({
       </fieldset>
 
       <fieldset className="space-y-4" disabled={pending}>
-        <legend className="text-sm font-semibold">
+        <legend className="text-sm font-black uppercase tracking-widest">
           Assignment and schedule
         </legend>
 
@@ -200,7 +207,7 @@ export function CampaignDeliveryFields({
             onChange={(event) =>
               setPolicy(event.target.value as typeof policy)
             }
-            className="flex h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
           >
             <option value="ALL_ELIGIBLE">All active operators</option>
             <option value="SELECTED_USERS">Selected operators only</option>
@@ -216,7 +223,7 @@ export function CampaignDeliveryFields({
               multiple
               defaultValue={values.assignedUserIds}
               size={Math.min(Math.max(operators.length, 3), 8)}
-              className="w-full rounded-lg border border-input bg-background p-2 text-sm"
+              className="w-full border-4 border-black bg-background p-2 font-mono text-sm font-bold"
             >
               {operators.map((operator) => (
                 <option key={operator.id} value={operator.id}>
@@ -225,7 +232,10 @@ export function CampaignDeliveryFields({
               ))}
             </select>
             {fieldError("assignedUserIds") ? (
-              <p role="alert" className="text-xs text-destructive">
+              <p
+                role="alert"
+                className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+              >
                 {fieldError("assignedUserIds")}
               </p>
             ) : null}
@@ -262,21 +272,21 @@ export function CampaignDeliveryFields({
         </div>
 
         <div className="space-y-2">
-          <label className="flex min-h-11 items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 border-2 border-black bg-background px-3 text-sm font-bold uppercase">
             <input
               type="checkbox"
               name="allowUserPause"
               defaultChecked={values.allowUserPause}
-              className="size-4"
+              className="size-4 border-2 border-black accent-primary"
             />
             Operators may pause their own job
           </label>
-          <label className="flex min-h-11 items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 border-2 border-black bg-background px-3 text-sm font-bold uppercase">
             <input
               type="checkbox"
               name="requireTermsAccept"
               defaultChecked={values.requireTermsAccept}
-              className="size-4"
+              className="size-4 border-2 border-black accent-primary"
             />
             Require a consent confirmation before starting
           </label>

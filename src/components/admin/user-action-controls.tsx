@@ -41,7 +41,7 @@ export function UserActionControls({
       <form
         action={formAction}
         onSubmit={() => setSuspending(false)}
-        className="space-y-3 border-t border-border pt-3"
+        className="space-y-3 border-t-4 border-black pt-3"
         noValidate
       >
         <input type="hidden" name="userId" value={userId} />
@@ -82,7 +82,7 @@ export function UserActionControls({
   }
 
   return (
-    <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+    <div className="flex flex-wrap gap-2 border-t-4 border-black pt-3">
       {status === "ACTIVE" ? (
         <Button
           type="button"

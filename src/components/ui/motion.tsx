@@ -26,12 +26,12 @@ import { cn } from "@/lib/utils";
  */
 
 const ENTER: Transition = {
-  duration: 0.45,
-  ease: [0.22, 1, 0.36, 1],
+  duration: 0.18,
+  ease: "linear",
 };
 
 /**
- * Page-level entrance: fade in and slide up. Wrap page content; combine with
+ * Page-level entrance: fade in and snap up. Wrap page content; combine with
  * `Stagger` to sequence the sections inside.
  */
 export function PageTransition({
@@ -42,7 +42,7 @@ export function PageTransition({
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
-        initial={{ opacity: 0, y: 14 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={ENTER}
         className={className}
@@ -61,8 +61,8 @@ export function PageTransition({
 export function Stagger({
   className,
   children,
-  delay = 0.04,
-  step = 0.06,
+  delay = 0.02,
+  step = 0.04,
   ...props
 }: HTMLMotionProps<"div"> & { delay?: number; step?: number }) {
   return (
@@ -97,7 +97,7 @@ export function StaggerItem({
   return (
     <motion.div
       variants={{
-        hidden: { opacity: 0, y: 12 },
+        hidden: { opacity: 0, y: 8 },
         visible: { opacity: 1, y: 0 },
       }}
       transition={ENTER}
@@ -117,7 +117,7 @@ export function Reveal({
   className,
   children,
   delay = 0,
-  y = 18,
+  y = 10,
   ...props
 }: HTMLMotionProps<"div"> & { delay?: number; y?: number }) {
   return (
@@ -137,10 +137,9 @@ export function Reveal({
 }
 
 /**
- * Ambient backdrop: flat dark-green wash, a low-opacity dot grid and two very
- * slowly drifting green blocks. Purely decorative and `aria-hidden`; the drift
- * is CSS-driven (transform only) and stops under reduced motion via
- * `motion-safe:`.
+ * Ambient backdrop: stark white ground, a hard structural dot grid and heavy
+ * black rules pinned to the viewport edges. Purely decorative and `aria-hidden`.
+ * No blur, no gradient wash, no motion.
  */
 export function AmbientBackground({ className }: { className?: string }) {
   return (
@@ -151,9 +150,10 @@ export function AmbientBackground({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="pattern-dots absolute inset-0 opacity-40" />
-      <div className="absolute -left-28 -top-28 size-[26rem] rounded-full bg-primary/6 blur-3xl motion-safe:animate-[drift_22s_ease-in-out_infinite]" />
-      <div className="absolute -bottom-40 -right-24 size-[30rem] rounded-full bg-success/5 blur-3xl motion-safe:animate-[drift_28s_ease-in-out_infinite_reverse]" />
+      <div className="pattern-dots absolute inset-0" />
+      <div className="absolute inset-y-0 left-[12%] w-1 bg-rule" />
+      <div className="absolute inset-y-0 right-[22%] w-1 bg-rule" />
+      <div className="absolute inset-x-0 top-[30%] h-1 bg-rule" />
     </div>
   );
 }

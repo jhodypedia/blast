@@ -52,12 +52,12 @@ export function SettingRow({
   return (
     <form
       action={formAction}
-      className="space-y-2 rounded-lg border border-border p-4"
+      className="space-y-2 border-4 border-black bg-card p-4 shadow-panel"
       noValidate
     >
       <input type="hidden" name="key" value={settingKey} />
       <Label htmlFor={inputId}>{label}</Label>
-      <p className="text-xs text-muted-foreground">{help}</p>
+      <p className="text-xs font-bold text-foreground">{help}</p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           id={inputId}
@@ -75,11 +75,15 @@ export function SettingRow({
           Save
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs font-bold uppercase text-foreground">
         Key: <span className="font-mono">{settingKey}</span>
       </p>
       {fieldError ? (
-        <p id={`${inputId}-error`} role="alert" className="text-xs text-destructive">
+        <p
+          id={`${inputId}-error`}
+          role="alert"
+          className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+        >
           {fieldError}
         </p>
       ) : null}

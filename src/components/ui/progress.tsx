@@ -9,8 +9,9 @@ import { cn } from "@/lib/utils";
 /**
  * Progress bar for blast-job delivery.
  *
- * The indicator is translated (never width-animated) so the fill stays on the
- * compositor. Values always come from authoritative server counts — the bar
+ * Brutalist treatment: a blocky, square, unstyled bar inside a thick black
+ * frame. The indicator is translated (never width-animated) so the fill stays on
+ * the compositor. Values always come from authoritative server counts — the bar
  * never advances on its own (RULES.md §13).
  */
 const TONES = {
@@ -38,7 +39,7 @@ function Progress({
       data-slot="progress"
       value={clamped}
       className={cn(
-        "relative h-2.5 w-full overflow-hidden rounded-full border border-border/70 bg-surface-strong",
+        "relative h-5 w-full overflow-hidden border-4 border-black bg-surface-strong",
         className,
       )}
       {...props}
@@ -46,7 +47,7 @@ function Progress({
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
         className={cn(
-          "h-full w-full rounded-full transition-transform duration-700 ease-out",
+          "h-full w-full transition-transform duration-300 [transition-timing-function:steps(10,end)]",
           TONES[tone],
         )}
         style={{ transform: `translateX(-${100 - clamped}%)` }}

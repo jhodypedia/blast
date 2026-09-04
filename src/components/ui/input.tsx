@@ -5,20 +5,21 @@ import { cn } from "@/lib/utils";
 /**
  * Text input primitive. Height meets the 44px touch-target minimum.
  *
- * Focus draws an animated emerald ring + border; invalid state switches the ring
- * to the destructive tone so validation is visible without relying on colour
- * alone (the field also renders an icon + message via the form primitives).
+ * Brutalist treatment: raw white rectangle inside a 4px black border, no radius,
+ * no inner shading. Focus fills the field with hazard yellow and adds a hard
+ * magenta outline; invalid state flips the fill to red-on-white so validation is
+ * visible without relying on colour alone (the field also renders an icon +
+ * message via the form primitives).
  */
 const inputClassName = [
-  "flex h-11 w-full rounded-lg border border-input bg-surface px-3.5 py-2 text-sm text-foreground",
-  "shadow-[inset_0_1px_0_oklch(1_0_0_/_0.03)]",
-  "transition-[border-color,box-shadow,background-color] duration-200 ease-out",
-  "placeholder:text-muted-foreground/80",
-  "hover:border-border-strong",
-  "focus:border-primary focus:bg-surface-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0",
-  "disabled:cursor-not-allowed disabled:opacity-55",
-  "aria-invalid:border-destructive aria-invalid:focus-visible:ring-destructive/50",
-  "file:mr-3 file:rounded-md file:border-0 file:bg-primary/15 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary",
+  "flex h-11 w-full border-4 border-black bg-background px-3 py-2 font-mono text-sm text-foreground",
+  "transition-[background-color,box-shadow] duration-100 [transition-timing-function:steps(2,end)]",
+  "placeholder:text-black placeholder:opacity-100 placeholder:uppercase",
+  "hover:bg-surface",
+  "focus:bg-accent focus:text-accent-foreground focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring",
+  "disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-black",
+  "aria-invalid:bg-destructive aria-invalid:text-destructive-foreground aria-invalid:placeholder:text-destructive-foreground",
+  "file:mr-3 file:border-0 file:border-r-4 file:border-black file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-black file:uppercase file:text-primary-foreground",
 ].join(" ");
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {

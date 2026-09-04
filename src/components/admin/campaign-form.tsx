@@ -62,7 +62,7 @@ export function CampaignForm({
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start gap-2 border-4 border-black bg-destructive p-3 text-sm font-bold text-destructive-foreground"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{state.message}</span>
@@ -70,7 +70,9 @@ export function CampaignForm({
       ) : null}
 
       <fieldset className="space-y-4" disabled={pending}>
-        <legend className="text-sm font-semibold">Basics</legend>
+        <legend className="text-sm font-black uppercase tracking-widest">
+          Basics
+        </legend>
 
         <Field
           id="name"
@@ -118,7 +120,9 @@ export function CampaignForm({
       </fieldset>
 
       <fieldset className="space-y-4" disabled={pending}>
-        <legend className="text-sm font-semibold">Message</legend>
+        <legend className="text-sm font-black uppercase tracking-widest">
+          Message
+        </legend>
 
         <Field
           id="messageText"
@@ -132,7 +136,7 @@ export function CampaignForm({
             maxLength={4096}
             rows={5}
             defaultValue={values.messageText}
-            className="w-full rounded-lg border border-input bg-background p-3 text-sm"
+            className="w-full border-4 border-black bg-background p-3 font-mono text-sm"
           />
         </Field>
 

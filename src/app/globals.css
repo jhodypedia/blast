@@ -4,79 +4,85 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens — "Deep Forest" premium dark theme.
+ * Design tokens — "Digital Brutalism".
  *
- * One palette only: the product is dark-mode exclusive, so `:root` and `.dark`
- * resolve to the same values and no surface can be rendered against an
- * unintended background.
+ * One palette only: `:root` and `.dark` resolve to the same values, so no
+ * surface can be rendered against an unintended background.
  *
  * Rules:
- * - Flat, solid colours only. No gradients anywhere in the token layer.
- * - Hue stays in the green band (155-170) for base surfaces; semantic ramps
- *   borrow amber / rose / cyan only for state meaning.
+ * - Web-safe, maximum-contrast colours only. No gradients, tints or alpha.
+ * - Every colour is either a solid fill (paired with its own `-foreground`)
+ *   or pure black ink.
+ * - Structure is drawn with 2-4px solid black rules and unblurred drop shadows.
  * - Every foreground/background pairing below clears WCAG AA (4.5:1) for body
  *   text and 3:1 for large text and non-text UI.
  */
 :root,
 .dark {
-  --radius: 0.875rem;
+  --radius: 0rem;
 
-  /* Base surfaces, darkest to lightest. */
-  --background: oklch(0.152 0.021 166);
-  --foreground: oklch(0.975 0.008 160);
+  /* Base surfaces. */
+  --background: #ffffff;
+  --foreground: #000000;
 
-  --surface: oklch(0.185 0.025 166);
-  --surface-strong: oklch(0.222 0.028 166);
+  --surface: #f2f2f2;
+  --surface-strong: #e0e0e0;
 
-  --card: oklch(0.192 0.025 166);
-  --card-foreground: oklch(0.975 0.008 160);
+  --card: #ffffff;
+  --card-foreground: #000000;
 
-  --popover: oklch(0.222 0.028 166);
-  --popover-foreground: oklch(0.975 0.008 160);
+  --popover: #ffffff;
+  --popover-foreground: #000000;
 
-  /* Emerald accent: interactive + primary. */
-  --primary: oklch(0.735 0.168 161);
-  --primary-foreground: oklch(0.16 0.03 166);
+  /* Raw blue: interactive + primary. */
+  --primary: #0000ff;
+  --primary-foreground: #ffffff;
 
-  --secondary: oklch(0.245 0.028 166);
-  --secondary-foreground: oklch(0.95 0.01 160);
+  --secondary: #e0e0e0;
+  --secondary-foreground: #000000;
 
-  --muted: oklch(0.245 0.028 166);
-  --muted-foreground: oklch(0.755 0.021 160);
+  --muted: #e0e0e0;
+  --muted-foreground: #000000;
 
-  --accent: oklch(0.28 0.038 164);
-  --accent-foreground: oklch(0.96 0.015 160);
+  /* Hazard yellow: hover / highlight. */
+  --accent: #ffff00;
+  --accent-foreground: #000000;
 
-  /* Semantic states. */
-  --success: oklch(0.765 0.17 158);
-  --success-foreground: oklch(0.16 0.03 160);
+  /* Semantic fills. */
+  --success: #008000;
+  --success-foreground: #ffffff;
 
-  --warning: oklch(0.82 0.145 80);
-  --warning-foreground: oklch(0.2 0.04 60);
+  --warning: #ffcc00;
+  --warning-foreground: #000000;
 
-  --destructive: oklch(0.685 0.19 20);
-  --destructive-foreground: oklch(0.16 0.03 20);
+  --destructive: #d90000;
+  --destructive-foreground: #ffffff;
 
-  --info: oklch(0.775 0.115 192);
-  --info-foreground: oklch(0.16 0.03 200);
+  --info: #00cccc;
+  --info-foreground: #000000;
 
-  /* Lines and focus. */
-  --border: oklch(0.305 0.03 166);
-  --border-strong: oklch(0.38 0.045 164);
-  --input: oklch(0.335 0.032 166);
-  --ring: oklch(0.79 0.16 162);
+  /* Lines, ink and focus. */
+  --border: #000000;
+  --border-strong: #000000;
+  --input: #000000;
+  --ring: #ff00ff;
 
-  --sidebar: oklch(0.171 0.023 166);
-  --sidebar-foreground: oklch(0.955 0.01 160);
-  --sidebar-border: oklch(0.288 0.03 166);
+  --link: #0000ff;
+  /* Solid grey for structural grid lines and placeholder blocks. */
+  --rule: #d4d4d4;
+
+  --sidebar: #f2f2f2;
+  --sidebar-foreground: #000000;
+  --sidebar-border: #000000;
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 6px);
-  --radius-md: calc(var(--radius) - 3px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 10px);
+  /* Sharp edges only. */
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+  --radius-xl: 0rem;
+  --radius-2xl: 0rem;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -106,28 +112,28 @@
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-rule: var(--rule);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
 
-  /* Depth is built from solid shadows + emerald glow, never gradients. */
-  --shadow-panel: 0 1px 1px oklch(0.08 0.02 166 / 0.7),
-    0 10px 30px -14px oklch(0.05 0.015 166 / 0.9);
-  --shadow-lift: 0 2px 2px oklch(0.08 0.02 166 / 0.6),
-    0 22px 45px -18px oklch(0.04 0.015 166 / 0.95);
-  --shadow-glow: 0 0 0 1px oklch(0.735 0.168 161 / 0.4),
-    0 10px 32px -12px oklch(0.735 0.168 161 / 0.45);
-  --shadow-glow-sm: 0 0 0 1px oklch(0.735 0.168 161 / 0.35),
-    0 6px 18px -8px oklch(0.735 0.168 161 / 0.35);
+  /* Depth is a solid, unblurred offset block. Never a soft shadow. */
+  --shadow-panel: 6px 6px 0 0 #000000;
+  --shadow-lift: 10px 10px 0 0 #000000;
+  --shadow-glow: 8px 8px 0 0 #000000;
+  --shadow-glow-sm: 4px 4px 0 0 #000000;
 
-  --animate-shimmer: shimmer 1.9s linear infinite;
-  --animate-fade-up: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-glow-pulse: glow-pulse 2.6s ease-in-out infinite;
-  --animate-drift: drift 22s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.2s steps(6, end) infinite;
+  --animate-fade-up: none;
+  --animate-glow-pulse: blink 1s steps(1, end) infinite;
+  --animate-drift: none;
 
-  --font-sans: var(--font-plus-jakarta), "Plus Jakarta Sans", Inter,
-    ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
+  /* Raw machine type: monospace everywhere. */
+  --font-sans: ui-monospace, "Cascadia Mono", Consolas, "Courier New", Courier,
+    monospace;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", Courier,
+    monospace;
 }
 
 @keyframes shimmer {
@@ -139,107 +145,109 @@
   }
 }
 
-@keyframes fade-up {
-  from {
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
     opacity: 0;
-    transform: translate3d(0, 12px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes glow-pulse {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-}
-
-@keyframes drift {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -18px, 0);
   }
 }
 
 @layer base {
+  /* Sharp edges are non-negotiable: kill every inherited/utility radius. */
+  *,
+  *::before,
+  *::after {
+    border-radius: 0 !important;
+  }
+
   * {
     @apply border-border;
   }
 
   html {
     -webkit-text-size-adjust: 100%;
-    scroll-behavior: smooth;
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    text-rendering: optimizeLegibility;
+    @apply bg-background text-foreground;
+    font-family: var(--font-mono);
   }
 
-  /* Fluid type scale: tight tracking on headings, normal on body. */
+  /* Oversized, aggressive, all-caps headings. */
   h1 {
-    font-size: clamp(1.75rem, 1.35rem + 1.9vw, 2.75rem);
-    line-height: 1.1;
-    letter-spacing: -0.025em;
-    font-weight: 700;
+    font-size: clamp(2rem, 1.4rem + 3vw, 3.25rem);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 
   h2 {
-    font-size: clamp(1.35rem, 1.15rem + 1vw, 1.875rem);
-    line-height: 1.18;
+    font-size: clamp(1.5rem, 1.2rem + 1.5vw, 2.125rem);
+    line-height: 1;
     letter-spacing: -0.02em;
-    font-weight: 700;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 
   h3 {
-    font-size: clamp(1.125rem, 1.03rem + 0.45vw, 1.375rem);
-    line-height: 1.25;
-    letter-spacing: -0.015em;
-    font-weight: 600;
+    font-size: clamp(1.125rem, 1rem + 0.6vw, 1.375rem);
+    line-height: 1.1;
+    letter-spacing: 0;
+    font-weight: 700;
+    text-transform: uppercase;
   }
 
-  /* Green keyboard focus ring on every focusable surface. */
+  /* Links are explicitly, thickly underlined. */
+  a {
+    color: var(--link);
+    font-weight: 700;
+    text-decoration-line: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  /* Nav targets and link-buttons are blocks, not inline links. */
+  nav a,
+  a[data-slot="button"] {
+    text-decoration-line: none;
+  }
+
+  /* Harsh, unmissable keyboard focus. */
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-ring;
+    outline: 4px solid var(--ring);
+    outline-offset: 2px;
   }
 
   ::selection {
-    background-color: oklch(0.735 0.168 161 / 0.3);
-    color: var(--foreground);
+    background-color: #ffff00;
+    color: #000000;
   }
 
-  /* Slim, themed scrollbars so long admin tables stay on-palette. */
+  /* Blocky, squared scrollbars. */
   * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: auto;
+    scrollbar-color: #000000 #ffffff;
   }
 
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
   }
 
   *::-webkit-scrollbar-track {
-    background: transparent;
+    background: #ffffff;
+    border-left: 2px solid #000000;
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
-    border-radius: 9999px;
-    border: 3px solid transparent;
-    background-clip: content-box;
+    background-color: #000000;
+    border: 3px solid #ffffff;
   }
 }
 
@@ -250,28 +258,25 @@
     min-width: 2.75rem;
   }
 
-  /* Low-opacity geometric depth for hero/shell backdrops. */
+  /* Visible structural grid, drawn with hard lines. */
   .pattern-dots {
-    background-image: radial-gradient(
-      oklch(0.735 0.168 161 / 0.16) 1px,
-      transparent 1px
-    );
-    background-size: 22px 22px;
+    background-image: radial-gradient(var(--rule) 2px, transparent 2px);
+    background-size: 24px 24px;
   }
 
   .pattern-grid {
     background-image:
-      linear-gradient(to right, oklch(0.735 0.168 161 / 0.07) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.735 0.168 161 / 0.07) 1px, transparent 1px);
-    background-size: 56px 56px;
+      linear-gradient(to right, var(--rule) 2px, transparent 2px),
+      linear-gradient(to bottom, var(--rule) 2px, transparent 2px);
+    background-size: 64px 64px;
   }
 
-  /* Solid dark-green overlay for imagery / stacked surfaces. */
+  /* Fully opaque black overlay for modals. */
   .overlay-forest {
-    background-color: oklch(0.152 0.021 166 / 0.82);
+    background-color: #000000;
   }
 
-  /* Shimmer sweep used by skeletons. */
+  /* Stepped placeholder sweep used by skeletons. */
   .shimmer {
     position: relative;
     overflow: hidden;
@@ -282,28 +287,23 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      oklch(0.735 0.168 161 / 0.14) 50%,
-      transparent 100%
-    );
+    background-color: var(--rule);
     animation: var(--animate-shimmer);
   }
 
-  /* Hover lift shared by cards and nav tiles. */
+  /* Hover shifts the block off its hard shadow. Transform/shadow only. */
   .lift {
     transition:
-      transform 250ms cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 250ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 250ms ease,
-      background-color 250ms ease;
+      transform 120ms steps(2, end),
+      box-shadow 120ms steps(2, end),
+      background-color 120ms steps(2, end);
     will-change: transform;
   }
 
   @media (hover: hover) {
     .lift:hover {
-      transform: translate3d(0, -3px, 0);
+      transform: translate3d(-3px, -3px, 0);
+      box-shadow: var(--shadow-lift);
     }
   }
 

@@ -48,7 +48,7 @@ export default async function AdminUsersPage() {
             {users.map((user) => (
               <StaggerItem key={user.id}>
                 <Card hover>
-                  <CardContent className="p-5 pt-5 sm:p-6 sm:pt-6">
+                  <CardContent className="p-4 pt-4 sm:p-5 sm:pt-5">
                     <div className="flex flex-wrap items-start gap-3.5">
                       <IconTile
                         tone={user.status === "ACTIVE" ? "primary" : "danger"}
@@ -57,10 +57,10 @@ export default async function AdminUsersPage() {
                         <UserCog className="size-5" />
                       </IconTile>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-bold tracking-tight">
+                        <p className="truncate text-base font-black uppercase tracking-tight">
                           {user.name || user.email}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {user.email} · joined{" "}
                           {user.createdAt.toISOString().slice(0, 10)}
                         </p>
@@ -107,9 +107,9 @@ export default async function AdminUsersPage() {
                       />
                     </dl>
 
-                    <div className="mt-4 border-t border-border/70 pt-4">
+                    <div className="mt-4 border-t-4 border-black pt-4">
                       {user.id === actor.id ? (
-                        <p className="text-xs font-medium text-muted-foreground">
+                        <p className="text-xs font-bold uppercase text-foreground">
                           This is your own account.
                         </p>
                       ) : (
@@ -141,12 +141,14 @@ function Metric({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface/60 p-3">
-      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="border-4 border-black bg-surface p-3">
+      <dt className="flex items-center gap-1.5 text-[0.6875rem] font-black uppercase tracking-widest text-foreground">
         <span aria-hidden="true">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-1 text-sm font-bold text-foreground">{value}</dd>
+      <dd className="mt-1 text-sm font-black leading-none tracking-tight text-foreground">
+        {value}
+      </dd>
     </div>
   );
 }
