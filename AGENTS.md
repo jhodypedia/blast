@@ -5,7 +5,7 @@
 Before doing any work:
 
 1. Read this file completely.
-2. Read `/RULES.md`.
+2. -
 3. Read all relevant files in `memory-bank/` if the folder exists.
 4. Inspect the existing repository before creating, replacing, moving, or deleting files.
 5. Explain the plan and affected files before making major architectural, database, security, dependency, or queue changes.

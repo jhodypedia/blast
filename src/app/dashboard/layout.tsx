@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import {
   LayoutDashboard,
-  Send,
   Smartphone,
   UserCog,
   Wallet,
@@ -17,7 +16,8 @@ import { AppShell, type NavItem } from "@/components/layout/app-shell";
  * the first line of defence (RULES.md §5).
  *
  * Campaign management is ADMIN-only, so the operator navigation exposes exactly
- * five destinations and no campaign entry (RULES.md §6).
+ * four destinations: no campaign entry and no separate blast entry. Every blast
+ * control lives on the Device page (RULES.md §6).
  */
 
 const NAV: NavItem[] = [
@@ -25,11 +25,6 @@ const NAV: NavItem[] = [
     href: "/dashboard",
     label: "Overview",
     icon: <LayoutDashboard className="size-4 text-primary" />,
-  },
-  {
-    href: "/dashboard/jobs",
-    label: "Blast",
-    icon: <Send className="size-4 text-primary" />,
   },
   {
     href: "/dashboard/devices",
@@ -66,7 +61,7 @@ export default async function DashboardLayout({
     <AppShell
       items={NAV}
       title="Operator console"
-      subtitle="Run assigned campaigns"
+      subtitle="Perangkat, blast, dan penghasilan"
       accountName={actor.name || actor.email}
       accountEmail={actor.email}
     >

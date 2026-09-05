@@ -20,10 +20,12 @@ import { logger } from "@/lib/observability/logger";
 import { saveCampaignMediaUpload } from "@/lib/storage/private-storage";
 
 /**
- * ADMIN campaign actions.
+ * ADMIN allocation actions.
  *
- * Every entry point asserts ADMIN first, then validates with Zod, then delegates
- * to the campaign service. No USER-reachable action exists in this file.
+ * These back the message/media/CTA/delay and per-user allocation controls on the
+ * Target Nomor page. Every entry point asserts ADMIN first, then validates with
+ * Zod, then delegates to the service layer. No USER-reachable action exists in
+ * this file.
  */
 
 export type AdminActionState =
@@ -137,7 +139,7 @@ export async function createCampaignAction(
       ip: await clientIp(),
     });
 
-    revalidatePath("/admin/campaigns");
+    revalidatePath("/admin/target-lists");
     return {
       status: "success",
       message: "Campaign created as a draft.",
@@ -180,8 +182,7 @@ export async function updateCampaignAction(
       ip: await clientIp(),
     });
 
-    revalidatePath("/admin/campaigns");
-    revalidatePath(`/admin/campaigns/${campaignId}`);
+    revalidatePath("/admin/target-lists");
     return { status: "success", message: "Campaign updated." };
   } catch (error) {
     return toState(error);
@@ -216,8 +217,7 @@ export async function campaignTransitionAction(
       ip: await clientIp(),
     });
 
-    revalidatePath("/admin/campaigns");
-    revalidatePath(`/admin/campaigns/${parsed.data.campaignId}`);
+    revalidatePath("/admin/target-lists");
     return { status: "success", message: "Campaign updated." };
   } catch (error) {
     return toState(error);

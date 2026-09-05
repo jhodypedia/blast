@@ -4,7 +4,7 @@ import {
   ArrowRight,
   ClipboardList,
   LayoutDashboard,
-  Megaphone,
+  ListChecks,
   Send,
   ShieldAlert,
   Users,
@@ -33,7 +33,7 @@ export default async function AdminOverviewPage() {
   const currency = await getSetting(SETTING_KEYS.defaultCurrency);
 
   const [
-    activeCampaigns,
+    activeAllocations,
     liveJobs,
     operators,
     pendingWithdrawals,
@@ -60,18 +60,18 @@ export default async function AdminOverviewPage() {
       <PageHeader
         icon={<LayoutDashboard className="size-5" />}
         title="Ringkasan operasional"
-        description="Pantau kampanye, delivery, operator, dan pembayaran dari satu tempat."
+        description="Pantau target nomor, delivery, operator, dan pembayaran dari satu tempat."
       />
 
       <PageSections>
         <Stagger className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 xl:grid-cols-4">
           <LinkStat
-            href="/admin/campaigns"
-            label="Kampanye aktif"
-            value={String(activeCampaigns)}
-            hint="Siap dijalankan"
+            href="/admin/target-lists"
+            label="Alokasi aktif"
+            value={String(activeAllocations)}
+            hint="Siap dijalankan operator"
             tone="info"
-            icon={<Megaphone className="size-5" />}
+            icon={<ListChecks className="size-5" />}
           />
           <LinkStat
             href="/admin/jobs"

@@ -3,7 +3,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   Activity,
-  Megaphone,
+  ListChecks,
   Send,
   Smartphone,
   Wallet,
@@ -11,7 +11,10 @@ import {
 
 import { requireUser } from "@/lib/auth/session";
 import { listUserDevices } from "@/lib/device/service";
-import { listCampaignsForUser } from "@/lib/campaign/service";
+import {
+  listCampaignsForUser,
+  remainingAllocation,
+} from "@/lib/campaign/service";
 import { listUserJobs } from "@/lib/blast/queries";
 import { getBalance } from "@/lib/ledger/service";
 import { getSetting } from "@/lib/settings/service";
@@ -52,18 +55,19 @@ export default async function DashboardPage() {
   const connected = devices.filter(
     (device) => device.status === "CONNECTED",
   ).length;
+  const allocationLeft = remainingAllocation(campaigns);
 
   return (
     <>
       <PageHeader
         icon={<Activity className="size-5" />}
         title={`Welcome back${actor.name ? `, ${actor.name}` : ""}`}
-        description="Your devices, available campaigns and earnings at a glance."
+        description="Perangkat, alokasi nomor, dan penghasilan Anda dalam satu tampilan."
         actions={
           <Button asChild>
-            <Link href="/dashboard/jobs">
-              <Send aria-hidden="true" />
-              Open blast
+            <Link href="/dashboard/devices">
+              <Smartphone aria-hidden="true" />
+              Buka perangkat
             </Link>
           </Button>
         }
@@ -90,11 +94,11 @@ export default async function DashboardPage() {
             icon={<Smartphone className="size-5" />}
           />
           <StatCard
-            label="Campaigns available"
+            label="Alokasi nomor tersisa"
             tone="info"
-            value={String(campaigns.filter((c) => c.startable).length)}
-            hint={`${campaigns.length} assigned to you`}
-            icon={<Megaphone className="size-5" />}
+            value={String(allocationLeft)}
+            hint="Nomor yang bisa Anda kirimi"
+            icon={<ListChecks className="size-5" />}
           />
           <StatCard
             label="Running jobs"
@@ -106,14 +110,14 @@ export default async function DashboardPage() {
         </StatGrid>
 
         <SectionCard
-          title="Live jobs"
-          description="Progress is calculated from confirmed delivery records."
+          title="Blast berjalan"
+          description="Progres dihitung dari catatan pengiriman yang terkonfirmasi."
           icon={<Send className="size-5" />}
           actions={
             jobs.length > 0 ? (
               <Button asChild variant="ghost" size="sm">
-                <Link href="/dashboard/jobs">
-                  All jobs
+                <Link href="/dashboard/devices">
+                  Semua perangkat
                   <ArrowRight aria-hidden="true" />
                 </Link>
               </Button>
@@ -123,12 +127,12 @@ export default async function DashboardPage() {
           {jobs.length === 0 ? (
             <EmptyState
               icon={<Send className="size-6" />}
-              title="No jobs running"
-              description="Pick an available campaign to start your first blast job."
+              title="Belum ada blast berjalan"
+              description="Mulai blast dari halaman perangkat setelah ada perangkat terhubung."
               action={
                 <Button asChild variant="outline" size="sm">
-                  <Link href="/dashboard/jobs">
-                    Open blast
+                  <Link href="/dashboard/devices">
+                    Buka perangkat
                     <ArrowRight aria-hidden="true" />
                   </Link>
                 </Button>
@@ -139,17 +143,17 @@ export default async function DashboardPage() {
               {jobs.map((job) => (
                 <StaggerItem key={job.id}>
                   <Link
-                    href={`/dashboard/jobs/${job.id}`}
+                    href="/dashboard/devices"
                     className="lift block border-4 border-black bg-surface p-4 hover:bg-accent focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black uppercase text-foreground">
-                          {job.campaignName}
+                          {job.deviceLabel}
                         </p>
                         <p className="mt-0.5 text-xs font-bold text-foreground">
-                          {job.deviceLabel} · {job.speedSeconds}s ·{" "}
-                          {job.progress.sent}/{job.quotaTotal} sent
+                          {job.devicePublicId} · {job.speedSeconds}s ·{" "}
+                          {job.progress.sent}/{job.quotaTotal} terkirim
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -167,7 +171,7 @@ export default async function DashboardPage() {
                       value={job.percent}
                       tone={job.status === "PAUSED" ? "warning" : "primary"}
                       className="mt-3"
-                      aria-label={`${job.campaignName} delivery progress`}
+                      aria-label={`${job.deviceLabel} delivery progress`}
                     />
                   </Link>
                 </StaggerItem>

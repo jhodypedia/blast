@@ -48,6 +48,14 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/**
+ * Device pairing modal.
+ *
+ * Pair Code is the default tab and requires a phone number first. Selecting the
+ * QR tab creates the session immediately without any number input; the request
+ * is guarded by a ref so repeated tab switches or re-renders cannot open a
+ * second concurrent session for the same device.
+ */
 export function DevicePairingModal({
   deviceId,
   deviceName,
@@ -61,7 +69,9 @@ export function DevicePairingModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const [method, setMethod] = useState<"QR" | "PAIR_CODE">("QR");
+  const defaultMethod: "QR" | "PAIR_CODE" =
+    pairCodeEnabled === false ? "QR" : "PAIR_CODE";
+  const [method, setMethod] = useState<"QR" | "PAIR_CODE">(defaultMethod);
   const [countryCode, setCountryCode] = useState("ID");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [payload, setPayload] = useState<StatusPayload | null>(null);
@@ -77,13 +87,22 @@ export function DevicePairingModal({
   );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const requestRef = useRef<AbortController | null>(null);
+  // One auto QR session per modal opening. Reset only when the modal closes or
+  // the operator asks for a refresh explicitly.
+  const qrRequestedRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
-    return () => previous?.focus();
-  }, [open]);
+    return () => {
+      previous?.focus();
+      // Closing ends the attempt, so the next opening may create a session again.
+      qrRequestedRef.current = false;
+      setMethod(defaultMethod);
+      setValidationError(null);
+    };
+  }, [open, defaultMethod]);
 
   const refreshStatus = useCallback(async () => {
     requestRef.current?.abort();
@@ -130,6 +149,26 @@ export function DevicePairingModal({
     if (pairState.status === "error") toast.error(pairState.message);
   }, [pairState, refreshStatus]);
 
+  /** Creates the QR session. Idempotent for one modal opening. */
+  const requestQrSession = useCallback(() => {
+    if (qrRequestedRef.current) return;
+    qrRequestedRef.current = true;
+    const formData = new FormData();
+    formData.set("deviceId", deviceId);
+    formData.set("method", "QR");
+    pairAction(formData);
+  }, [deviceId, pairAction]);
+
+  // Selecting the QR tab creates the session on its own: the operator never has
+  // to press a button or type a number first. Deferred to a task so the action
+  // dispatch does not run synchronously inside the effect body.
+  useEffect(() => {
+    if (!open || method !== "QR") return;
+    if (payload?.device.status === "CONNECTED") return;
+    const handle = window.setTimeout(() => requestQrSession(), 0);
+    return () => window.clearTimeout(handle);
+  }, [open, method, payload?.device.status, requestQrSession]);
+
   // The rendered QR is keyed by its payload so a stale image is filtered out
   // during render instead of being cleared with a synchronous setState.
   useEffect(() => {
@@ -162,7 +201,7 @@ export function DevicePairingModal({
   const qrChallenge = challenge?.method === "QR" ? challenge : null;
   const pairCodeChallenge = challenge?.method === "PAIR_CODE" ? challenge : null;
   const methods: ("QR" | "PAIR_CODE")[] =
-    pairCodeEnabled === false ? ["QR"] : ["QR", "PAIR_CODE"];
+    pairCodeEnabled === false ? ["QR"] : ["PAIR_CODE", "QR"];
   // `now` is refreshed by the status poll and by a 1s tick, so the clock is read
   // from state rather than during render. It stays 0 until the first poll lands.
   const remainingMs =
@@ -261,13 +300,24 @@ export function DevicePairingModal({
             <Button type="submit" loading={pairPending} className="w-full">Minta kode pairing</Button>
           </form>
         ) : (
-          <form action={pairAction} className="mt-4">
-            <input type="hidden" name="deviceId" value={deviceId} />
-            <input type="hidden" name="method" value="QR" />
-            <Button type="submit" loading={pairPending} className="w-full">
-              <QrCode aria-hidden="true" /> Minta QR Code
+          <div className="mt-4 space-y-2">
+            <p className="border-4 border-black bg-info px-3 py-2 text-xs font-bold text-info-foreground">
+              Sesi QR dibuat otomatis saat tab ini dibuka. Pindai kode di bawah
+              dari WhatsApp &rsaquo; Perangkat tertaut.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              loading={pairPending}
+              onClick={() => {
+                qrRequestedRef.current = false;
+                requestQrSession();
+              }}
+            >
+              <QrCode aria-hidden="true" /> Muat ulang QR Code
             </Button>
-          </form>
+          </div>
         )}
 
         <div className="mt-5 min-h-48 border-4 border-black bg-surface p-4 text-center" aria-live="polite">

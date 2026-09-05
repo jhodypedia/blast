@@ -145,15 +145,15 @@ describe("authConfig.callbacks.authorized", () => {
   });
 
   it("allows an active admin into /admin", () => {
-    expect(authorize("/admin/campaigns", { role: "ADMIN", status: "ACTIVE" })).toBe(
-      true,
-    );
+    expect(
+      authorize("/admin/target-lists", { role: "ADMIN", status: "ACTIVE" }),
+    ).toBe(true);
   });
 
   it("keeps a USER out of /admin", () => {
-    expect(authorize("/admin/campaigns", { role: "USER", status: "ACTIVE" })).toBe(
-      false,
-    );
+    expect(
+      authorize("/admin/target-lists", { role: "USER", status: "ACTIVE" }),
+    ).toBe(false);
   });
 
   it("rejects an explicitly suspended account", () => {

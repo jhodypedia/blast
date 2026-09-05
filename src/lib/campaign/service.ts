@@ -538,4 +538,19 @@ export async function listCampaignsForUser(
   });
 }
 
+/**
+ * Total numbers one operator may still send to, across every allocation.
+ *
+ * Both the remaining quota and the unclaimed target count bound what a job can
+ * allocate, so the effective figure is the smaller of the two per allocation.
+ * This is the only allocation number a USER is allowed to see (RULES.md §6).
+ */
+export function remainingAllocation(campaigns: UserCampaignSummary[]): number {
+  return campaigns.reduce(
+    (total, campaign) =>
+      total + Math.min(campaign.quotaRemaining, campaign.targetAvailable),
+    0,
+  );
+}
+
 

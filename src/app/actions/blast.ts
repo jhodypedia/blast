@@ -90,7 +90,7 @@ export async function startBlastAction(
       acceptedTerms: parsed.data.acceptedTerms,
     });
 
-    revalidatePath("/dashboard/jobs");
+    revalidatePath("/dashboard/devices");
 
     return {
       status: "success",
@@ -143,7 +143,7 @@ export async function startBlastAllDevicesAction(
       acceptedTerms: parsed.data.acceptedTerms,
     });
 
-    revalidatePath("/dashboard/jobs");
+    revalidatePath("/dashboard/devices");
 
     if (result.startedCount === 0) {
       const firstReason = result.outcomes.find(
@@ -225,7 +225,7 @@ export async function blastJobControlAction(
         break;
     }
 
-    revalidatePath("/dashboard/jobs");
+    revalidatePath("/dashboard/devices");
 
     return { status: "success", message: "Job updated." };
   } catch (error) {

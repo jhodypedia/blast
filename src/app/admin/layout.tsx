@@ -3,7 +3,6 @@ import {
   ClipboardList,
   Gauge,
   ListChecks,
-  Megaphone,
   ScrollText,
   Settings,
   Users,
@@ -16,6 +15,9 @@ import { AppShell, type NavItem } from "@/components/layout/app-shell";
 /**
  * Admin layout. ADMIN is the only role permitted past this point; the check is
  * repeated in every admin action and service (RULES.md §5).
+ *
+ * There is no campaign navigation entry: message content, media, CTA, delay and
+ * per-user allocation are all configured from Target Nomor ("Daftar nomor").
  */
 
 const NAV: NavItem[] = [
@@ -25,13 +27,8 @@ const NAV: NavItem[] = [
     icon: <Gauge className="size-4 text-primary" />,
   },
   {
-    href: "/admin/campaigns",
-    label: "Kampanye",
-    icon: <Megaphone className="size-4 text-info" />,
-  },
-  {
     href: "/admin/target-lists",
-    label: "Daftar nomor",
+    label: "Target nomor",
     icon: <ListChecks className="size-4 text-primary" />,
   },
   {
@@ -79,7 +76,7 @@ export default async function AdminLayout({
     <AppShell
       items={NAV}
       title="Konsol admin"
-      subtitle="Kampanye, nomor, dan pembayaran"
+      subtitle="Target nomor, delivery, dan pembayaran"
       accountName={actor.name || actor.email}
       accountEmail={actor.email}
     >
