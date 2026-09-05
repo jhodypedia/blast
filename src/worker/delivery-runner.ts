@@ -1,10 +1,13 @@
 import "server-only";
 
+import type { MessageType, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { serverEnv } from "@/lib/env";
 import { logger } from "@/lib/observability/logger";
 import { whatsappAdapter } from "@/lib/whatsapp/adapter";
+import { parseButtons } from "@/lib/whatsapp/content";
 import { retryBackoffMs } from "@/lib/whatsapp/errors";
+import type { OutgoingButton, OutgoingImage } from "@/lib/whatsapp/types";
 import {
   claimRecipients,
   heartbeatLease,
@@ -43,9 +46,79 @@ type SendContext = {
   payoutPerSend: string;
   currency: string;
   messageText: string;
-  cta?: { label: string; url: string };
-  media?: { storagePath: string; mimeType: string; caption?: string };
+  images: OutgoingImage[];
+  buttons: OutgoingButton[];
 };
+
+/**
+ * Reads the content block out of an immutable job snapshot.
+ *
+ * Two generations of snapshot exist. A RICH job carries the unified block on
+ * `snapshotImage*`/`snapshotButtons`. An older job carries a single media object
+ * and a single CTA, gated by `snapshotMessageType`, and is translated here — so
+ * leftover media on a TEXT row still cannot turn into an image message.
+ */
+function snapshotContent(job: {
+  snapshotMessageType: MessageType;
+  snapshotMediaKey: string | null;
+  snapshotMediaMime: string | null;
+  snapshotCtaLabel: string | null;
+  snapshotCtaUrl: string | null;
+  snapshotImage1Key: string | null;
+  snapshotImage1Mime: string | null;
+  snapshotImage2Key: string | null;
+  snapshotImage2Mime: string | null;
+  snapshotButtons: Prisma.JsonValue | null;
+}): { images: OutgoingImage[]; buttons: OutgoingButton[] } {
+  if (job.snapshotMessageType === "RICH") {
+    const images: OutgoingImage[] = [];
+    if (job.snapshotImage1Key && job.snapshotImage1Mime) {
+      images.push({
+        storageKey: job.snapshotImage1Key,
+        mimeType: job.snapshotImage1Mime,
+      });
+    }
+    if (job.snapshotImage2Key && job.snapshotImage2Mime) {
+      images.push({
+        storageKey: job.snapshotImage2Key,
+        mimeType: job.snapshotImage2Mime,
+      });
+    }
+    return { images, buttons: parseButtons(job.snapshotButtons) };
+  }
+
+  if (
+    job.snapshotMessageType === "IMAGE" &&
+    job.snapshotMediaKey &&
+    job.snapshotMediaMime
+  ) {
+    return {
+      images: [
+        { storageKey: job.snapshotMediaKey, mimeType: job.snapshotMediaMime },
+      ],
+      buttons: [],
+    };
+  }
+
+  if (
+    job.snapshotMessageType === "BUTTON" &&
+    job.snapshotCtaLabel &&
+    job.snapshotCtaUrl
+  ) {
+    return {
+      images: [],
+      buttons: [
+        {
+          variant: "URL",
+          label: job.snapshotCtaLabel,
+          value: job.snapshotCtaUrl,
+        },
+      ],
+    };
+  }
+
+  return { images: [], buttons: [] };
+}
 
 async function evaluateGate(blastJobId: string): Promise<SendGate> {
   const job = await prisma.blastJob.findUnique({
@@ -63,6 +136,11 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       snapshotMediaCaption: true,
       snapshotCtaLabel: true,
       snapshotCtaUrl: true,
+      snapshotImage1Key: true,
+      snapshotImage1Mime: true,
+      snapshotImage2Key: true,
+      snapshotImage2Mime: true,
+      snapshotButtons: true,
       user: { select: { id: true, status: true, deletedAt: true } },
       device: { select: { id: true, status: true, deletedAt: true } },
       campaign: {
@@ -105,27 +183,13 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       retryLimit: job.snapshotRetryLimit,
       payoutPerSend: job.snapshotPayoutPerSend.toString(),
       currency: job.snapshotCurrency,
-      messageText: job.snapshotMessageText,
-      // The snapshotted message type decides which content the adapter sends, so
-      // leftover media on a TEXT row can never turn into an image message.
-      ...(job.snapshotMessageType === "BUTTON" &&
-      job.snapshotCtaLabel &&
-      job.snapshotCtaUrl
-        ? { cta: { label: job.snapshotCtaLabel, url: job.snapshotCtaUrl } }
-        : {}),
-      ...(job.snapshotMessageType === "IMAGE" &&
-      job.snapshotMediaKey &&
-      job.snapshotMediaMime
-        ? {
-            media: {
-              storagePath: job.snapshotMediaKey,
-              mimeType: job.snapshotMediaMime,
-              ...(job.snapshotMediaCaption
-                ? { caption: job.snapshotMediaCaption }
-                : {}),
-            },
-          }
-        : {}),
+      // A legacy IMAGE snapshot used the caption when it had one; the unified
+      // block has a single body, so the caption still wins for those rows.
+      messageText:
+        job.snapshotMessageType === "IMAGE" && job.snapshotMediaCaption
+          ? job.snapshotMediaCaption
+          : job.snapshotMessageText,
+      ...snapshotContent(job),
     },
   };
 }
@@ -217,8 +281,8 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
         const result = await whatsappAdapter.send(context.deviceId, {
           normalizedNumber: recipient.normalizedNumber,
           text: context.messageText,
-          ...(context.cta ? { cta: context.cta } : {}),
-          ...(context.media ? { media: context.media } : {}),
+          ...(context.images.length > 0 ? { images: context.images } : {}),
+          ...(context.buttons.length > 0 ? { buttons: context.buttons } : {}),
         });
 
         if (result.status === "SENT") {

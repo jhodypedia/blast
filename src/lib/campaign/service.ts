@@ -1,5 +1,6 @@
 import "server-only";
 
+import { MessageType, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { conflict, invalidState, notFound, validationError } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit/service";
@@ -22,13 +23,18 @@ import type {
 /** Content fields whose change must bump `contentVersion`. */
 function contentChanged(
   before: {
-    messageType: "TEXT" | "IMAGE" | "BUTTON";
+    messageType: MessageType;
     messageText: string;
     mediaKey: string | null;
     mediaMime: string | null;
     mediaCaption: string | null;
     ctaLabel: string | null;
     ctaUrl: string | null;
+    image1Key: string | null;
+    image1Mime: string | null;
+    image2Key: string | null;
+    image2Mime: string | null;
+    buttons: Prisma.JsonValue | null;
   },
   after: UpdateCampaignInput,
 ): boolean {
@@ -39,8 +45,53 @@ function contentChanged(
     (before.mediaMime ?? null) !== (after.mediaMime ?? null) ||
     (before.mediaCaption ?? null) !== (after.mediaCaption ?? null) ||
     (before.ctaLabel ?? null) !== (after.ctaLabel ?? null) ||
-    (before.ctaUrl ?? null) !== (after.ctaUrl ?? null)
+    (before.ctaUrl ?? null) !== (after.ctaUrl ?? null) ||
+    (before.image1Key ?? null) !== (after.image1Key ?? null) ||
+    (before.image1Mime ?? null) !== (after.image1Mime ?? null) ||
+    (before.image2Key ?? null) !== (after.image2Key ?? null) ||
+    (before.image2Mime ?? null) !== (after.image2Mime ?? null) ||
+    // Order matters to the recipient, so the buttons are compared as an ordered
+    // list rather than as a set.
+    JSON.stringify(before.buttons ?? []) !== JSON.stringify(after.buttons)
   );
+}
+
+/**
+ * Content columns for a create/update.
+ *
+ * The unified block is the source of truth. The legacy `media*`/`cta*` columns
+ * are still written so a rollback, an old report or a job snapshotted from an
+ * older deploy keeps reading a coherent row.
+ */
+function contentColumns(input: CreateCampaignInput | UpdateCampaignInput): {
+  messageType: MessageType;
+  messageText: string;
+  mediaKey: string | null;
+  mediaMime: string | null;
+  mediaCaption: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  image1Key: string | null;
+  image1Mime: string | null;
+  image2Key: string | null;
+  image2Mime: string | null;
+  buttons: Prisma.InputJsonValue | typeof Prisma.DbNull;
+} {
+  return {
+    messageType: input.messageType,
+    messageText: input.messageText,
+    mediaKey: input.mediaKey ?? null,
+    mediaMime: input.mediaMime ?? null,
+    mediaCaption: input.mediaCaption ?? null,
+    ctaLabel: input.ctaLabel ?? null,
+    ctaUrl: input.ctaUrl ?? null,
+    image1Key: input.image1Key ?? null,
+    image1Mime: input.image1Mime ?? null,
+    image2Key: input.image2Key ?? null,
+    image2Mime: input.image2Mime ?? null,
+    // `DbNull` writes a SQL NULL; `JsonNull` would store the JSON literal `null`.
+    buttons: input.buttons.length > 0 ? input.buttons : Prisma.DbNull,
+  };
 }
 
 /** Fields an admin may never change once the campaign has recipients. */
@@ -95,13 +146,7 @@ export async function createCampaign(params: {
         internalNotes: input.internalNotes ?? null,
         createdByAdminId: params.adminUserId,
         status: "DRAFT",
-        messageType: input.messageType,
-        messageText: input.messageText,
-        mediaKey: input.mediaKey ?? null,
-        mediaMime: input.mediaMime ?? null,
-        mediaCaption: input.mediaCaption ?? null,
-        ctaLabel: input.ctaLabel ?? null,
-        ctaUrl: input.ctaUrl ?? null,
+        ...contentColumns(input),
         targetListId: input.targetListId,
         deviceModePolicy: input.deviceModePolicy,
         allowedSpeeds: input.allowedSpeeds,
@@ -184,6 +229,11 @@ export async function updateCampaign(params: {
       mediaCaption: true,
       ctaLabel: true,
       ctaUrl: true,
+      image1Key: true,
+      image1Mime: true,
+      image2Key: true,
+      image2Mime: true,
+      buttons: true,
       contentVersion: true,
       targetListId: true,
       payoutPerSend: true,
@@ -226,13 +276,7 @@ export async function updateCampaign(params: {
         name: input.name,
         description: input.description,
         internalNotes: input.internalNotes ?? null,
-        messageType: input.messageType,
-        messageText: input.messageText,
-        mediaKey: input.mediaKey ?? null,
-        mediaMime: input.mediaMime ?? null,
-        mediaCaption: input.mediaCaption ?? null,
-        ctaLabel: input.ctaLabel ?? null,
-        ctaUrl: input.ctaUrl ?? null,
+        ...contentColumns(input),
         targetListId: input.targetListId,
         deviceModePolicy: input.deviceModePolicy,
         allowedSpeeds: input.allowedSpeeds,

@@ -12,6 +12,7 @@ import {
 import {
   campaignTransitionSchema,
   createCampaignSchema,
+  normalizeCampaignContent,
   updateCampaignSchema,
 } from "@/lib/validation/campaign";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
@@ -81,8 +82,13 @@ function campaignFormPayload(formData: FormData) {
     name: formData.get("name"),
     description: formData.get("description"),
     internalNotes: formData.get("internalNotes") ?? undefined,
-    messageType: formData.get("messageType") ?? "TEXT",
+    messageType: formData.get("messageType") ?? "RICH",
     messageText: formData.get("messageText"),
+    image1Key: formData.get("image1Key") ?? undefined,
+    image1Mime: formData.get("image1Mime") ?? undefined,
+    image2Key: formData.get("image2Key") ?? undefined,
+    image2Mime: formData.get("image2Mime") ?? undefined,
+    buttons: contentButtonsPayload(formData),
     mediaKey: formData.get("mediaKey") ?? undefined,
     mediaMime: formData.get("mediaMime") ?? undefined,
     mediaCaption: formData.get("mediaCaption") ?? undefined,
@@ -108,48 +114,97 @@ function campaignFormPayload(formData: FormData) {
 }
 
 /**
- * Discards content that the selected message type does not use.
+ * Reads the button rows out of `FormData`.
  *
- * The admin form keeps hidden inputs for every shape so switching type does not
- * lose a draft, but persisting a stale CTA on a TEXT allocation would let the
- * sender pick the wrong content later. The schema then validates that whatever
- * the chosen type *does* require is present.
+ * The form submits parallel arrays (`buttonVariant[]`, `buttonLabel[]`,
+ * `buttonValue[]`) so a row keeps its position, and blank rows are dropped here
+ * rather than being rejected: an admin leaving the third row empty means "two
+ * buttons", not a validation error. Anything non-blank still goes through Zod.
  */
-function pruneUnusedContent(input: Record<string, unknown>) {
-  const messageType = input.messageType;
+function contentButtonsPayload(formData: FormData): unknown[] {
+  const variants = formData.getAll("buttonVariant").map(String);
+  const labels = formData.getAll("buttonLabel").map(String);
+  const values = formData.getAll("buttonValue").map(String);
 
-  if (messageType === "IMAGE") {
-    return { ...input, ctaLabel: undefined, ctaUrl: undefined };
+  const rows: unknown[] = [];
+
+  for (const [index, variant] of variants.entries()) {
+    const label = (labels[index] ?? "").trim();
+    const value = (values[index] ?? "").trim();
+
+    if (label.length === 0 && value.length === 0) {
+      continue;
+    }
+
+    rows.push({
+      variant,
+      label,
+      ...(value.length > 0 ? { value } : {}),
+    });
   }
-  if (messageType === "BUTTON") {
-    return {
-      ...input,
-      mediaKey: undefined,
-      mediaMime: undefined,
-      mediaCaption: undefined,
-    };
-  }
-  return {
-    ...input,
-    mediaKey: undefined,
-    mediaMime: undefined,
-    mediaCaption: undefined,
-    ctaLabel: undefined,
-    ctaUrl: undefined,
-  };
+
+  return rows;
 }
 
-async function withCampaignMedia(formData: FormData, input: Record<string, unknown>) {
-  const mediaFile = formData.get("mediaFile");
-  if (!(mediaFile instanceof File) || mediaFile.size === 0) return input;
-  const media = await saveCampaignMediaUpload({ file: mediaFile });
-  return { ...input, mediaKey: media.storageKey, mediaMime: media.mimeType };
+/**
+ * Persists the two content-block image uploads.
+ *
+ * Each slot keeps a hidden key/mime pair so an edit that does not re-upload keeps
+ * its existing image, and a slot can be cleared explicitly. The second slot is
+ * ignored when the first is empty; the schema rejects that combination anyway,
+ * and dropping it here avoids storing an orphaned upload.
+ */
+async function withContentImages(
+  formData: FormData,
+  input: Record<string, unknown>,
+) {
+  const result = { ...input };
+
+  for (const slot of [1, 2] as const) {
+    const file = formData.get(`image${slot}File`);
+    const cleared = formData.get(`image${slot}Clear`) === "on";
+
+    if (cleared) {
+      result[`image${slot}Key`] = undefined;
+      result[`image${slot}Mime`] = undefined;
+      continue;
+    }
+
+    if (!(file instanceof File) || file.size === 0) {
+      continue;
+    }
+
+    const media = await saveCampaignMediaUpload({ file });
+    result[`image${slot}Key`] = media.storageKey;
+    result[`image${slot}Mime`] = media.mimeType;
+  }
+
+  // A legacy form post still sends `mediaFile`; keep honouring it so an older
+  // client cannot silently lose its image.
+  const legacyFile = formData.get("mediaFile");
+  if (legacyFile instanceof File && legacyFile.size > 0) {
+    const media = await saveCampaignMediaUpload({ file: legacyFile });
+    result.mediaKey = media.storageKey;
+    result.mediaMime = media.mimeType;
+  }
+
+  if (!result.image1Key) {
+    result.image2Key = undefined;
+    result.image2Mime = undefined;
+  }
+
+  return result;
 }
 
-/** Builds the validated payload: media upload first, then type-based pruning. */
+/**
+ * Builds the validated payload: uploads first, then the legacy→block upgrade.
+ *
+ * `normalizeCampaignContent` runs last so a payload that only carries the old
+ * `mediaKey`/`ctaLabel` shape still arrives as a content block.
+ */
 async function allocationPayload(formData: FormData) {
-  return pruneUnusedContent(
-    await withCampaignMedia(formData, campaignFormPayload(formData)),
+  return normalizeCampaignContent(
+    await withContentImages(formData, campaignFormPayload(formData)),
   );
 }
 

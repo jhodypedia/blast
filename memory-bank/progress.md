@@ -28,7 +28,7 @@ unexercised against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | **re-run 2026-09-05: 22 files / 240 tests, all passed, 34.9s** |
+| Unit tests | `npm test` (`vitest run`) | **re-run 2026-09-05: 23 files / 249 tests, all passed, 43.7s** |
 | Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
 | Build | `npm run build` | exit 0 |
 
@@ -858,6 +858,84 @@ skipping when `SKIP LOCKED` is missing, and that is intentional. Those suites
 assert disjoint concurrent batches, a guarantee only `SKIP LOCKED` provides;
 skipping them would report green while the invariant went unverified. Do not
 convert it to a skip.
+
+## `blastJobControlAction` Rejected Every Real Job Id (2026-09-05)
+
+Symptom in the dev server log — every Pause / Resume / Stop click on the Device
+page returned success at the HTTP level but did nothing:
+
+```
+POST /dashboard/devices 200 in 159ms
+  └─ ƒ blastJobControlAction({"message":"That action is not available.","status":"error"}, {}) in 33ms src/app/actions/blast.ts
+```
+
+### Root cause
+
+`blastJobActionSchema.safeParse` failed on `blastJobId`, so `blast.ts:190`
+returned the generic `"That action is not available."` before any ownership,
+policy or state check ran.
+
+The id was valid; the schema was not. `cuidSchema` in
+`src/lib/validation/common.ts` was `/^[a-z0-9]+$/i` — alphanumeric only, no
+separators. But `BlastJob.id` is **not** a Prisma `cuid()`: `startBlastJob`
+assigns it explicitly at `src/lib/blast/start-job.ts:222`:
+
+```ts
+const blastJobId = randomUUID();   // 8f2c…-…-…-…-…, hyphenated
+```
+
+so the hidden `blastJobId` input in `src/components/devices/job-controls.tsx`
+posted back a UUID, which the regex rejected. Confirmed with a throwaway script:
+`randomUUID()` → `blastJobActionSchema` fails with
+`blastJobId: Invalid identifier`; a cuid-shaped string passes.
+
+Same failure applied to `adminStopJobSchema`
+(`src/components/admin/admin-job-stop-button.tsx` → `/admin/jobs`), which reuses
+`cuidSchema` for the same field. Every other id in the app is a real `cuid()`, so
+nothing else was affected — that is why only the job controls broke.
+
+### Fix
+
+One-line schema change, no API, service or UI change:
+
+```ts
+// src/lib/validation/common.ts
+.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/i, "Invalid identifier")
+```
+
+Accepts both a cuid and a UUID; still rejects leading/trailing or doubled
+hyphens, whitespace, dots, quotes, slashes, backslashes, newlines, `../` and
+`<script>`. `max(64)` is unchanged, ids still reach the database as bound
+parameters, and ownership is still re-checked in `blast.ts` and again in
+`lib/blast/lifecycle.ts`, so widening the character class does not widen
+authorization.
+
+Rejected alternative: switching `BlastJob.id` to `cuid()`. That is a schema
+migration plus a data migration on live rows, to fix a validator that was simply
+narrower than the ids the app issues.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| New `src/lib/validation/common.test.ts` | 6 tests — cuid accepted, 25 random UUIDs accepted, whitespace trimmed, bad separators rejected, injection-shaped payloads rejected, 64/65-char boundary |
+| `src/lib/validation/device.test.ts` | +2 tests: UUID accepted for PAUSE/RESUME/STOP; `-leading`, `trailing-`, `double--dash`, `has space`, `has.dot`, `quote'd`, `""` still rejected |
+| `src/lib/validation/admin.test.ts` | +1 test: `adminStopJobSchema` accepts a UUID job id |
+| `npm test` (`vitest run`) | **23 files / 249 tests passed**, 43.7s, exit 0 |
+| `npm run lint` | exit 0 (1 pre-existing `no-img-element` warning in `device-pairing-modal.tsx`) |
+| `npm run build` | exit 0, TypeScript 47s, same 17 routes |
+
+Not verified: no click-through in a browser against a live `QUEUED`/`RUNNING`
+job. There is no job row on 3306 to drive Pause/Resume/Stop against — checked
+2026-09-05: `blast` holds the migrated schema with `users=1, devices=0,
+campaigns=0, jobs=0, recipients=0`; `blast_test` and `blast_shadow` are empty
+too; and the schema named in `DATABASE_URL` (`wablast`) has **no tables at all**
+(`SHOW TABLES` returns nothing). That last point does not match the dev log that
+prompted this fix, which necessarily came from a session that could see a device
+and a live job — so either `.env` changed since, or the still-running dev server
+(node started 20:48) holds an older connection string. Worth confirming which
+database the dev server is actually using before the next manual test; it was not
+resolved here and `.env` was not touched.
 
 ## Known Gaps
 

@@ -71,13 +71,21 @@ enum AssignmentPolicy {
 }
 
 /// Baileys message shape an ADMIN configures for a target-number allocation.
+///
+/// RICH is the current model: one content block that may combine one or two
+/// images, the message text and up to three buttons, all delivered as a single
+/// WhatsApp message. The three legacy values are kept so allocations created
+/// before the unified block keep sending exactly what they always sent.
+///
 /// TEXT   -> conversation message, `messageText` only.
 /// IMAGE  -> image message, requires `mediaKey` + `mediaMime`, caption optional.
 /// BUTTON -> templated CTA message, requires `ctaLabel` + `ctaUrl`.
+/// RICH   -> unified block: `image1*`/`image2*` + `messageText` + `buttons`.
 enum MessageType {
   TEXT
   IMAGE
   BUTTON
+  RICH
 }
 
 enum BlastJobStatus {
@@ -329,11 +337,30 @@ model Campaign {
   /// always carries a CTA (RULES.md §10).
   messageType  MessageType @default(TEXT)
   messageText  String  @db.Text
+  /// Legacy single-media columns. Retained so allocations created before the
+  /// unified block keep sending exactly what they always sent; new RICH rows use
+  /// `image1*`/`image2*` instead.
   mediaKey     String? @db.VarChar(512)
   mediaMime    String? @db.VarChar(127)
   mediaCaption String? @db.Text
+  /// Legacy single-CTA columns. Superseded by `buttons` for RICH rows.
   ctaLabel     String? @db.VarChar(64)
   ctaUrl       String? @db.VarChar(2048)
+
+  /// Unified content block (RICH): one or two images plus `messageText` plus up
+  /// to three buttons, all delivered as a single WhatsApp message. A second
+  /// image is only valid when the first is present, and each key always travels
+  /// with its own mime type so the sender never has to guess.
+  image1Key  String? @db.VarChar(512)
+  image1Mime String? @db.VarChar(127)
+  image2Key  String? @db.VarChar(512)
+  image2Mime String? @db.VarChar(127)
+  /// JSON array of at most three buttons, each `{ variant, label, value? }` with
+  /// variant in URL | REPLY | COPY | CALL. Stored as JSON rather than a relation
+  /// because the list is tiny, ordered, always read as a whole and snapshotted
+  /// verbatim onto every blast job.
+  buttons Json?
+
   /// Monotonic content version. Snapshotted onto every blast job.
   contentVersion Int    @default(1)
 
@@ -404,11 +431,18 @@ model BlastJob {
   snapshotContentVersion Int
   snapshotMessageType    MessageType      @default(TEXT)
   snapshotMessageText    String           @db.Text
+  /// Legacy content snapshot; still authoritative for TEXT/IMAGE/BUTTON jobs.
   snapshotMediaKey       String?          @db.VarChar(512)
   snapshotMediaMime      String?          @db.VarChar(127)
   snapshotMediaCaption   String?          @db.Text
   snapshotCtaLabel       String?          @db.VarChar(64)
   snapshotCtaUrl         String?          @db.VarChar(2048)
+  /// Unified content block snapshot; authoritative for RICH jobs.
+  snapshotImage1Key      String?          @db.VarChar(512)
+  snapshotImage1Mime     String?          @db.VarChar(127)
+  snapshotImage2Key      String?          @db.VarChar(512)
+  snapshotImage2Mime     String?          @db.VarChar(127)
+  snapshotButtons        Json?
   snapshotPayoutPerSend  Decimal          @db.Decimal(18, 4)
   snapshotCurrency       String           @db.VarChar(3)
   snapshotDeviceMode     DeviceModePolicy

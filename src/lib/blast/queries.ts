@@ -281,7 +281,7 @@ export type UserDeliveryLogRow = {
   event: string;
   detail: string | null;
   /** Message shape actually sent, from the job's immutable snapshot. */
-  messageType: "TEXT" | "IMAGE" | "BUTTON";
+  messageType: "TEXT" | "IMAGE" | "BUTTON" | "RICH";
   /** Delay used by the job that produced this row, in seconds. */
   speedSeconds: number;
 };

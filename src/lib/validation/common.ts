@@ -36,7 +36,22 @@ export const nameSchema = z
     "Name may only contain letters, spaces, apostrophes, periods and hyphens",
   );
 
-export const cuidSchema = z.string().trim().min(1).max(64).regex(/^[a-z0-9]+$/i, "Invalid identifier");
+/**
+ * Opaque entity identifier.
+ *
+ * Most ids are Prisma `cuid()` values, but some rows were created with an
+ * application-generated `randomUUID()`, which is hyphenated. Both shapes are
+ * accepted so an id the database itself issued can never be rejected at the
+ * request boundary. The character class stays deliberately narrow — no spaces,
+ * dots, quotes or leading/trailing separators — and ids always reach the
+ * database as bound parameters, with ownership verified separately.
+ */
+export const cuidSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/i, "Invalid identifier");
 
 export const turnstileTokenSchema = z
   .string()

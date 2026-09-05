@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +8,7 @@ import {
   pairDeviceSchema,
   startBlastSchema,
 } from "@/lib/validation/device";
+
 
 /**
  * Device and blast-job validation (RULES.md §11, §12).
@@ -87,6 +90,38 @@ describe("blastJobActionSchema", () => {
     }
   });
 
+  /**
+   * `startBlastJob` assigns `BlastJob.id` from `randomUUID()`, so the id the
+   * client posts back is hyphenated. Rejecting it here made every Pause/Resume/
+   * Stop click fail with "That action is not available."
+   */
+  it("accepts the uuid shape that startBlastJob assigns to a job", () => {
+    for (const action of ["PAUSE", "RESUME", "STOP"]) {
+      const result = blastJobActionSchema.safeParse({
+        blastJobId: randomUUID(),
+        action,
+      });
+
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("still rejects identifiers that are not opaque ids", () => {
+    for (const blastJobId of [
+      "-leading",
+      "trailing-",
+      "double--dash",
+      "has space",
+      "has.dot",
+      "quote'd",
+      "",
+    ]) {
+      expect(
+        blastJobActionSchema.safeParse({ blastJobId, action: "STOP" }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects an unknown control", () => {
     expect(
       blastJobActionSchema.safeParse({
@@ -96,6 +131,7 @@ describe("blastJobActionSchema", () => {
     ).toBe(false);
   });
 });
+
 
 describe("device schemas", () => {
   it("requires a phone number for pair-code pairing", () => {

@@ -1,6 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/db/prisma";
+import { parseButtons } from "@/lib/whatsapp/content";
+import type { ContentButtonFormValue } from "@/lib/validation/campaign";
 
 /**
  * Admin read-only queries.
@@ -29,13 +31,19 @@ export type AdminCampaignRow = {
   config: {
     description: string;
     internalNotes: string;
-    messageType: "TEXT" | "IMAGE" | "BUTTON";
+    messageType: "TEXT" | "IMAGE" | "BUTTON" | "RICH";
     messageText: string;
     mediaKey: string;
     mediaMime: string;
     mediaCaption: string;
     ctaLabel: string;
     ctaUrl: string;
+    /** Unified content block: up to two images plus up to three buttons. */
+    image1Key: string;
+    image1Mime: string;
+    image2Key: string;
+    image2Mime: string;
+    buttons: ContentButtonFormValue[];
     deviceModePolicy: "SINGLE_DEVICE" | "ALL_DEVICES";
     allowedSpeeds: number[];
     maxConcurrentJobs: number;
@@ -80,6 +88,11 @@ export async function listCampaignsForAdmin(params?: {
         mediaCaption: true,
         ctaLabel: true,
         ctaUrl: true,
+        image1Key: true,
+        image1Mime: true,
+        image2Key: true,
+        image2Mime: true,
+        buttons: true,
         targetListId: true,
         deviceModePolicy: true,
         allowedSpeeds: true,
@@ -143,6 +156,17 @@ export async function listCampaignsForAdmin(params?: {
         mediaCaption: row.mediaCaption ?? "",
         ctaLabel: row.ctaLabel ?? "",
         ctaUrl: row.ctaUrl ?? "",
+        image1Key: row.image1Key ?? "",
+        image1Mime: row.image1Mime ?? "",
+        image2Key: row.image2Key ?? "",
+        image2Mime: row.image2Mime ?? "",
+        // Read through the same guard the sender uses, then flattened to blank
+        // strings so the admin form can bind it to controlled inputs.
+        buttons: parseButtons(row.buttons).map((button) => ({
+          variant: button.variant,
+          label: button.label,
+          value: button.value ?? "",
+        })),
         deviceModePolicy: row.deviceModePolicy,
         allowedSpeeds: Array.isArray(row.allowedSpeeds)
           ? (row.allowedSpeeds as number[])

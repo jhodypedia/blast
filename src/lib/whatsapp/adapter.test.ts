@@ -32,10 +32,113 @@ class FakeSocket {
 
   requestPairingCode = vi.fn(async () => "AB12CD34");
 
+  sendMessage = vi.fn(async (_jid: string, content: unknown) => {
+    sendLog.push({ kind: "sendMessage", content });
+    return { key: { id: "provider-message-id" } };
+  });
+
+  relayMessage = vi.fn(
+    async (_jid: string, content: unknown, _options: unknown) => {
+      sendLog.push({ kind: "relayMessage", content });
+    },
+  );
+
   emit(event: string, payload: unknown): void {
     for (const handler of this.handlers.get(event) ?? []) {
       handler(payload);
     }
+  }
+}
+
+/** Records what the adapter handed to the provider for each send. */
+const sendLog: Array<{ kind: string; content: unknown }> = [];
+/** Records the builder calls the adapter made while rendering a content plan. */
+const builderLog: string[] = [];
+
+/**
+ * Minimal stand-ins for the library's interactive builders.
+ *
+ * They record the calls the adapter makes and return a message envelope shaped
+ * like `generateWAMessageFromContent` output, which is what `relayMessage`
+ * consumes.
+ */
+class FakeButton {
+  readonly buttons: string[] = [];
+  body = "";
+  image: Buffer | undefined;
+
+  setBody(body: string): this {
+    this.body = body;
+    return this;
+  }
+
+  setImage(image: Buffer): this {
+    this.image = image;
+    builderLog.push("button.setImage");
+    return this;
+  }
+
+  addUrl(label: string, url: string): this {
+    this.buttons.push(`url:${label}:${url}`);
+    return this;
+  }
+
+  addReply(label: string, id: string): this {
+    this.buttons.push(`reply:${label}:${id}`);
+    return this;
+  }
+
+  addCopy(label: string, code: string): this {
+    this.buttons.push(`copy:${label}:${code}`);
+    return this;
+  }
+
+  addCall(label: string, number: string): this {
+    this.buttons.push(`call:${label}:${number}`);
+    return this;
+  }
+
+  async toCard(): Promise<unknown> {
+    builderLog.push("button.toCard");
+    return { body: this.body, buttons: [...this.buttons], hasImage: Boolean(this.image) };
+  }
+
+  async build(jid: string): Promise<unknown> {
+    builderLog.push("button.build");
+    return {
+      key: { remoteJid: jid, id: "interactive-message-id" },
+      message: {
+        interactive: {
+          body: this.body,
+          buttons: [...this.buttons],
+          hasImage: Boolean(this.image),
+        },
+      },
+    };
+  }
+}
+
+class FakeCarousel {
+  readonly cards: unknown[] = [];
+  body = "";
+
+  setBody(body: string): this {
+    this.body = body;
+    return this;
+  }
+
+  addCard(card: unknown): this {
+    this.cards.push(card);
+    builderLog.push("carousel.addCard");
+    return this;
+  }
+
+  build(jid: string): unknown {
+    builderLog.push("carousel.build");
+    return {
+      key: { remoteJid: jid, id: "carousel-message-id" },
+      message: { carousel: { body: this.body, cards: [...this.cards] } },
+    };
   }
 }
 
@@ -58,13 +161,23 @@ const clearAuthState = vi.fn(async () => {
 
 vi.mock("@/lib/whatsapp/auth-state", () => ({ loadAuthState, clearAuthState }));
 
+/** The adapter is the only layer allowed to touch private storage. */
+const readFile = vi.fn(async (path: string) => Buffer.from(`bytes:${path}`));
+
+vi.mock("node:fs/promises", () => ({ readFile }));
+
+vi.mock("@/lib/storage/private-storage", () => ({
+  resolveStoragePath: (key: string) => `/storage/${key}`,
+}));
+
 vi.mock("@rexxhayanasi/elaina-baileys", () => ({
   default: () => {
     const socket = new FakeSocket();
     createdSockets.push(socket);
     return socket;
   },
-  Button: class {},
+  Button: FakeButton,
+  Carousel: FakeCarousel,
   DisconnectReason: {
     restartRequired: 515,
     loggedOut: 401,
@@ -120,6 +233,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   createdSockets.length = 0;
   callLog.length = 0;
+  sendLog.length = 0;
+  builderLog.length = 0;
   credsFixture = {};
   deviceCounter += 1;
   // A fresh module gives each test its own socket registry.
@@ -493,5 +608,138 @@ describe("whatsappAdapter pairing challenges", () => {
       method: "QR",
       qr: "ref-string",
     });
+  });
+});
+
+/**
+ * Content-block delivery.
+ *
+ * One content block must always leave as exactly one message, so these tests
+ * assert both the provider call the adapter chose and that it made only one.
+ */
+describe("whatsappAdapter send", () => {
+  /** Connects a device and drives it to CONNECTED. */
+  async function connected(): Promise<string> {
+    const deviceId = nextDeviceId();
+    await adapter.whatsappAdapter.connect({ deviceId });
+    socketAt(0).emit("connection.update", { connection: "open" });
+    await settle(0);
+    return deviceId;
+  }
+
+  const image = (name: string) => ({
+    storageKey: `campaign-media/2026-01-01/${name}.png`,
+    mimeType: "image/png",
+  });
+
+  it("refuses to send through a device that is not connected", async () => {
+    const deviceId = nextDeviceId();
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Hello",
+    });
+
+    expect(result).toEqual({
+      status: "RETRYABLE_FAILED",
+      failureCategory: "DEVICE_NOT_CONNECTED",
+      failureReason: "The selected device is not connected",
+    });
+    expect(sendLog).toHaveLength(0);
+  });
+
+  it("sends a text-only block as one plain message", async () => {
+    const deviceId = await connected();
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Hello",
+    });
+
+    expect(result.status).toBe("SENT");
+    expect(result.providerMessageId).toBe("provider-message-id");
+    expect(sendLog).toEqual([
+      { kind: "sendMessage", content: { text: "Hello" } },
+    ]);
+  });
+
+  it("sends one image with no buttons as a single image message", async () => {
+    const deviceId = await connected();
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Caption",
+      images: [image("one")],
+    });
+
+    expect(result.status).toBe("SENT");
+    expect(sendLog).toHaveLength(1);
+    expect(sendLog[0]?.kind).toBe("sendMessage");
+    expect(sendLog[0]?.content).toMatchObject({
+      mimetype: "image/png",
+      caption: "Caption",
+    });
+    // The key is resolved through private storage, never used as a raw path.
+    expect(readFile).toHaveBeenCalledWith(
+      `/storage/${image("one").storageKey}`,
+    );
+  });
+
+  it("relays one image plus buttons as a single interactive message", async () => {
+    const deviceId = await connected();
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Body",
+      images: [image("one")],
+      buttons: [
+        { variant: "URL", label: "Buka", value: "https://example.com" },
+        { variant: "REPLY", label: "Balas" },
+      ],
+    });
+
+    expect(result.status).toBe("SENT");
+    expect(sendLog).toHaveLength(1);
+    expect(sendLog[0]?.kind).toBe("relayMessage");
+    expect(sendLog[0]?.content).toEqual({
+      interactive: {
+        body: "Body",
+        buttons: ["url:Buka:https://example.com", "reply:Balas:reply_2"],
+        hasImage: true,
+      },
+    });
+    expect(builderLog).toContain("button.setImage");
+  });
+
+  it("relays two images as a single two-card carousel", async () => {
+    const deviceId = await connected();
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Body",
+      images: [image("one"), image("two")],
+      buttons: [{ variant: "COPY", label: "Salin", value: "PROMO" }],
+    });
+
+    expect(result.status).toBe("SENT");
+    expect(sendLog).toHaveLength(1);
+    expect(sendLog[0]?.kind).toBe("relayMessage");
+    expect(builderLog.filter((entry) => entry === "carousel.addCard")).toHaveLength(2);
+    expect(readFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("classifies a provider failure without throwing", async () => {
+    const deviceId = await connected();
+    socketAt(0).sendMessage.mockRejectedValueOnce(new Error("Connection Closed"));
+
+    const result = await adapter.whatsappAdapter.send(deviceId, {
+      normalizedNumber: "628111222333",
+      text: "Hello",
+    });
+
+    // The write had already been attempted, so the outcome is ambiguous rather
+    // than retryable (RULES.md §12).
+    expect(result.status).toBe("UNKNOWN");
+    expect(result.failureCategory).toBe("CONNECTION_LOST_AFTER_WRITE");
   });
 });

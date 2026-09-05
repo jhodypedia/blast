@@ -24,12 +24,101 @@ export const allowedSpeedsSchema = z
   });
 
 /**
- * Baileys message shape. Discriminates which content fields the sender uses;
- * the cross-field rules below make the combination impossible to get wrong.
+ * Baileys message shape.
+ *
+ * `RICH` is the current model: one unified content block that may combine one or
+ * two images, the message text and up to three buttons, all delivered as a single
+ * WhatsApp message. `TEXT`/`IMAGE`/`BUTTON` are retained so allocations created
+ * before the unified block keep validating and keep sending what they always
+ * sent; the cross-field rules below still enforce their narrower requirements.
  */
-export const messageTypeSchema = z.enum(["TEXT", "IMAGE", "BUTTON"]);
+export const messageTypeSchema = z.enum(["TEXT", "IMAGE", "BUTTON", "RICH"]);
 
 export type MessageTypeInput = z.infer<typeof messageTypeSchema>;
+
+/** Interactive button variants an ADMIN may attach to a content block. */
+export const buttonVariantSchema = z.enum(["URL", "REPLY", "COPY", "CALL"]);
+
+export type ButtonVariantInput = z.infer<typeof buttonVariantSchema>;
+
+export const MAX_CONTENT_BUTTONS = 3;
+
+/**
+ * One button in the content block.
+ *
+ * `value` carries the variant's payload — a URL, a phone number or a copyable
+ * code — and is validated per variant so an admin cannot save a URL button
+ * without a URL. `REPLY` needs no payload: the id is derived server-side.
+ */
+export const contentButtonSchema = z
+  .object({
+    variant: buttonVariantSchema,
+    label: z
+      .string()
+      .trim()
+      .min(1, "Button label is required")
+      .max(64, "Button label must be at most 64 characters"),
+    value: z.string().trim().max(2048).optional(),
+  })
+  .superRefine((button, ctx) => {
+    if (button.variant === "REPLY") {
+      return;
+    }
+
+    const value = button.value?.trim();
+
+    if (!value) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["value"],
+        message:
+          button.variant === "URL"
+            ? "Enter the button URL"
+            : button.variant === "CALL"
+              ? "Enter the phone number to call"
+              : "Enter the code to copy",
+      });
+      return;
+    }
+
+    if (button.variant === "URL" && !z.string().url().safeParse(value).success) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["value"],
+        message: "Enter a valid URL",
+      });
+    }
+
+    if (button.variant === "CALL" && !/^\+?[0-9\s()-]{6,24}$/.test(value)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["value"],
+        message: "Enter a valid phone number",
+      });
+    }
+  });
+
+export type ContentButtonInput = z.infer<typeof contentButtonSchema>;
+
+/**
+ * Form-friendly button row.
+ *
+ * Every field is present and `value` is blank rather than absent, so the admin
+ * form can bind it to controlled inputs and the empty rows round-trip cleanly.
+ */
+export type ContentButtonFormValue = {
+  variant: ButtonVariantInput;
+  label: string;
+  value: string;
+};
+
+export const contentButtonsSchema = z
+  .array(contentButtonSchema)
+  .max(MAX_CONTENT_BUTTONS, `Use at most ${MAX_CONTENT_BUTTONS} buttons`)
+  .default([]);
+
+const imageKeySchema = z.string().trim().max(512).optional();
+const imageMimeSchema = z.string().trim().max(127).optional();
 
 const campaignBaseSchema = z.object({
   name: z.string().trim().min(3, "Name must be at least 3 characters").max(120),
@@ -40,12 +129,23 @@ const campaignBaseSchema = z.object({
     .max(500, "Description must be at most 500 characters"),
   internalNotes: z.string().trim().max(2000).optional(),
 
-  messageType: messageTypeSchema.default("TEXT"),
+  messageType: messageTypeSchema.default("RICH"),
   messageText: z
     .string()
     .trim()
     .min(1, "Message text is required")
     .max(4096, "Message must be at most 4096 characters"),
+
+  // --- Unified content block ------------------------------------------------
+  image1Key: imageKeySchema,
+  image1Mime: imageMimeSchema,
+  image2Key: imageKeySchema,
+  image2Mime: imageMimeSchema,
+  buttons: contentButtonsSchema,
+
+  // --- Legacy content fields ------------------------------------------------
+  // Kept so an allocation saved before the unified block still validates. The
+  // normaliser below upgrades them into the block, and the service persists both.
   mediaKey: z.string().trim().max(512).optional(),
   mediaMime: z.string().trim().max(127).optional(),
   mediaCaption: z.string().trim().max(1024).optional(),
@@ -100,12 +200,28 @@ const withCrossFieldRules = <T extends typeof campaignBaseSchema>(schema: T) =>
       path: ["mediaMime"],
       message: "Media requires a content type",
     })
-    // The message type is the contract the sender reads, so the fields it needs
-    // must be present at validation time rather than at send time.
+    // Each image key must travel with its own content type, so the sender never
+    // has to guess a mime type at send time.
+    .refine((data) => !data.image1Key || Boolean(data.image1Mime), {
+      path: ["image1Mime"],
+      message: "The first image requires a content type",
+    })
+    .refine((data) => !data.image2Key || Boolean(data.image2Mime), {
+      path: ["image2Mime"],
+      message: "The second image requires a content type",
+    })
+    // A second image without a first would silently become the only image.
+    .refine((data) => !data.image2Key || Boolean(data.image1Key), {
+      path: ["image1Key"],
+      message: "Upload the first image before the second",
+    })
+    // The legacy message type is still the contract those rows' sender reads, so
+    // the fields it needs must be present at validation time, not at send time.
     .refine(
       (data) =>
         data.messageType !== "IMAGE" ||
-        (Boolean(data.mediaKey) && Boolean(data.mediaMime)),
+        (Boolean(data.mediaKey) && Boolean(data.mediaMime)) ||
+        (Boolean(data.image1Key) && Boolean(data.image1Mime)),
       {
         path: ["mediaKey"],
         message: "An image message requires an uploaded image",
@@ -114,12 +230,53 @@ const withCrossFieldRules = <T extends typeof campaignBaseSchema>(schema: T) =>
     .refine(
       (data) =>
         data.messageType !== "BUTTON" ||
-        (Boolean(data.ctaLabel) && Boolean(data.ctaUrl)),
+        (Boolean(data.ctaLabel) && Boolean(data.ctaUrl)) ||
+        data.buttons.length > 0,
       {
         path: ["ctaLabel"],
         message: "A button message requires a button label and URL",
       },
     );
+
+/**
+ * Upgrades a legacy payload into the unified content block.
+ *
+ * Accepts what the pre-block admin form submitted (`mediaKey`/`mediaMime` plus a
+ * single `ctaLabel`/`ctaUrl`) and mirrors it onto `image1*`/`buttons`, so an old
+ * form post, an old API client and the migration backfill all converge on the
+ * same shape. Runs before parsing, and never overwrites a value the caller already
+ * supplied for the block itself.
+ */
+export function normalizeCampaignContent<T extends Record<string, unknown>>(
+  input: T,
+): T {
+  const result: Record<string, unknown> = { ...input };
+
+  const asText = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : undefined;
+
+  const image1Key = asText(result.image1Key);
+  const mediaKey = asText(result.mediaKey);
+  const mediaMime = asText(result.mediaMime);
+
+  if (!image1Key && mediaKey && mediaMime) {
+    result.image1Key = mediaKey;
+    result.image1Mime = mediaMime;
+  }
+
+  const buttons = result.buttons;
+  const hasButtons = Array.isArray(buttons) && buttons.length > 0;
+  const ctaLabel = asText(result.ctaLabel);
+  const ctaUrl = asText(result.ctaUrl);
+
+  if (!hasButtons && ctaLabel && ctaUrl) {
+    result.buttons = [{ variant: "URL", label: ctaLabel, value: ctaUrl }];
+  }
+
+  return result as T;
+}
 
 export const createCampaignSchema = withCrossFieldRules(campaignBaseSchema);
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;

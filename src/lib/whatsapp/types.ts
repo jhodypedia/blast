@@ -28,17 +28,44 @@ export type SendResult = {
   failureReason?: string;
 };
 
+export type OutgoingImage = {
+  /**
+   * Private-storage key, exactly as stored on the campaign/job snapshot. The
+   * adapter is the only layer that resolves it to an absolute path and reads the
+   * bytes, so no caller ever has to know where the storage root lives.
+   */
+  storageKey: string;
+  mimeType: string;
+};
+
+/** Interactive button variants an ADMIN may attach to a content block. */
+export type OutgoingButtonVariant = "URL" | "REPLY" | "COPY" | "CALL";
+
+export type OutgoingButton = {
+  variant: OutgoingButtonVariant;
+  label: string;
+  /**
+   * URL for `URL`, phone number for `CALL`, copyable code for `COPY`. Unused by
+   * `REPLY`, whose payload id is derived from the label.
+   */
+  value?: string;
+};
+
+/**
+ * One outgoing WhatsApp message.
+ *
+ * This is the unified content block: text plus up to two images plus up to three
+ * buttons, always delivered as a *single* message. `src/lib/whatsapp/content.ts`
+ * turns it into a concrete send plan, so callers never choose a Baileys shape.
+ */
 export type OutgoingMessage = {
   /** Canonical E.164 without `+`. */
   normalizedNumber: string;
   text: string;
-  cta?: { label: string; url: string };
-  media?: {
-    /** Absolute path inside the private storage root. */
-    storagePath: string;
-    mimeType: string;
-    caption?: string;
-  };
+  /** Zero, one or two images, in display order. */
+  images?: OutgoingImage[];
+  /** At most three buttons, in display order. */
+  buttons?: OutgoingButton[];
 };
 
 export type DeviceConnectionState =

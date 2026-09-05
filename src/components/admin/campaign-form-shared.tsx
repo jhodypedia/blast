@@ -6,30 +6,58 @@ import { Label } from "@/components/ui/label";
 
 export const SPEED_OPTIONS = [1, 3, 6, 10];
 
-/** Baileys message shapes an admin may configure for an allocation. */
-export const MESSAGE_TYPE_OPTIONS = [
+/** Maximum images and buttons in one content block (mirrors the Zod schema). */
+export const MAX_CONTENT_IMAGES = 2;
+export const MAX_CONTENT_BUTTONS = 3;
+
+/** Interactive button variants an admin may attach to the content block. */
+export const BUTTON_VARIANT_OPTIONS = [
   {
-    value: "TEXT",
-    label: "Teks saja",
-    hint: "Hanya isi pesan, tanpa gambar atau tombol.",
+    value: "URL",
+    label: "Buka tautan",
+    valueLabel: "URL tujuan",
+    placeholder: "https://contoh.com/promo",
   },
   {
-    value: "IMAGE",
-    label: "Pesan dengan gambar",
-    hint: "Perlu unggahan gambar. Isi pesan dipakai sebagai caption.",
+    value: "REPLY",
+    label: "Balasan cepat",
+    valueLabel: "Tidak perlu diisi",
+    placeholder: "",
   },
   {
-    value: "BUTTON",
-    label: "Pesan dengan tombol",
-    hint: "Perlu label dan URL tombol call-to-action.",
+    value: "COPY",
+    label: "Salin kode",
+    valueLabel: "Kode yang disalin",
+    placeholder: "PROMO2026",
+  },
+  {
+    value: "CALL",
+    label: "Telepon",
+    valueLabel: "Nomor telepon",
+    placeholder: "+628123456789",
   },
 ] as const satisfies ReadonlyArray<{
-  value: MessageTypeValue;
+  value: ButtonVariantValue;
   label: string;
-  hint: string;
+  valueLabel: string;
+  placeholder: string;
 }>;
 
-export type MessageTypeValue = "TEXT" | "IMAGE" | "BUTTON";
+export type ButtonVariantValue = "URL" | "REPLY" | "COPY" | "CALL";
+
+/**
+ * Message shape stored on an allocation.
+ *
+ * `RICH` is the unified content block every new allocation uses. The three legacy
+ * values still exist on older rows and are shown read-only in the summary.
+ */
+export type MessageTypeValue = "TEXT" | "IMAGE" | "BUTTON" | "RICH";
+
+export type ContentButtonValue = {
+  variant: ButtonVariantValue;
+  label: string;
+  value: string;
+};
 
 export type CampaignFormOption = { id: string; label: string };
 
@@ -38,9 +66,16 @@ export type CampaignFormValues = {
   name: string;
   description: string;
   internalNotes: string;
-  /** Discriminates which content fields the sender uses. */
+  /** Shape stored on the row; new saves always submit `RICH`. */
   messageType: MessageTypeValue;
   messageText: string;
+  /** Unified content block. */
+  image1Key: string;
+  image1Mime: string;
+  image2Key: string;
+  image2Mime: string;
+  buttons: ContentButtonValue[];
+  /** Legacy content, still submitted so an older row keeps its data. */
   mediaKey: string;
   mediaMime: string;
   mediaCaption: string;

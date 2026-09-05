@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,6 +9,7 @@ import {
   updateSettingSchema,
   userActionSchema,
 } from "@/lib/validation/admin";
+
 import {
   archiveTargetListSchema,
   createTargetListSchema,
@@ -118,7 +121,21 @@ describe("adminStopJobSchema", () => {
       }).success,
     ).toBe(true);
   });
+
+  /**
+   * `BlastJob.id` is a `randomUUID()` assigned by `startBlastJob`, so the admin
+   * force-stop form posts a hyphenated id too.
+   */
+  it("accepts the uuid shape of a real blast job id", () => {
+    expect(
+      adminStopJobSchema.safeParse({
+        blastJobId: randomUUID(),
+        reason: "Recipient complaint",
+      }).success,
+    ).toBe(true);
+  });
 });
+
 
 describe("target list schemas", () => {
   it("upper-cases an optional country code", () => {

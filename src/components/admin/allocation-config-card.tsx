@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Image as ImageIcon,
+  LayoutTemplate,
   ListChecks,
   MessageSquare,
   MousePointerClick,
@@ -45,12 +46,14 @@ const MESSAGE_TYPE_LABEL: Record<MessageTypeValue, string> = {
   TEXT: "Teks",
   IMAGE: "Gambar",
   BUTTON: "Tombol",
+  RICH: "Blok konten",
 };
 
 const MESSAGE_TYPE_ICON: Record<MessageTypeValue, React.ReactNode> = {
   TEXT: <MessageSquare className="size-3.5" />,
   IMAGE: <ImageIcon className="size-3.5" />,
   BUTTON: <MousePointerClick className="size-3.5" />,
+  RICH: <LayoutTemplate className="size-3.5" />,
 };
 
 export type AllocationSummary = {

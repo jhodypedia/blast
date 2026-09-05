@@ -27,7 +27,7 @@ export type DeliveryLogRow = {
   event: string;
   detail: string | null;
   /** Message shape and delay used by the job that produced the row. */
-  messageType: "TEXT" | "IMAGE" | "BUTTON";
+  messageType: "TEXT" | "IMAGE" | "BUTTON" | "RICH";
   speedSeconds: number;
 };
 
@@ -35,6 +35,7 @@ const MESSAGE_TYPE_LABEL: Record<DeliveryLogRow["messageType"], string> = {
   TEXT: "Teks",
   IMAGE: "Gambar",
   BUTTON: "Tombol",
+  RICH: "Blok konten",
 };
 
 const STATUS_VARIANT: Record<

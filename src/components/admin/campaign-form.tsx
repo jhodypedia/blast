@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { AlertCircle, Save } from "lucide-react";
+import { AlertCircle, ImagePlus, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -12,12 +12,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CampaignDeliveryFields } from "@/components/admin/campaign-delivery-fields";
+import { ContentBlockPreview } from "@/components/admin/content-block-preview";
 import {
+  BUTTON_VARIANT_OPTIONS,
   Field,
-  MESSAGE_TYPE_OPTIONS,
+  MAX_CONTENT_BUTTONS,
   type CampaignFormOption,
   type CampaignFormValues,
-  type MessageTypeValue,
+  type ContentButtonValue,
 } from "@/components/admin/campaign-form-shared";
 
 const initialState: AdminActionState = { status: "idle" };
@@ -25,10 +27,11 @@ const initialState: AdminActionState = { status: "idle" };
 /**
  * Allocation create / edit form — ADMIN only.
  *
- * Backs the Baileys configuration on Target Nomor: message type, body, image,
- * CTA, allowed delays, per-operator allocation and schedule. The same Zod schema
- * validates this payload on the server, and payout, currency and target list are
- * frozen there once recipients exist (RULES.md §6).
+ * Backs the Baileys configuration on Target Nomor. Content is one unified block —
+ * up to two images, the message text and up to three buttons — delivered as a
+ * single WhatsApp message, so there is no message-type choice to get wrong. The
+ * same Zod schema validates this payload on the server, and payout, currency and
+ * target list are frozen there once recipients exist (RULES.md §6).
  */
 export function CampaignForm({
   values,
@@ -47,12 +50,14 @@ export function CampaignForm({
     initialState,
   );
   const [policy, setPolicy] = useState(values.assignmentPolicy);
-  // Drives which content fields are shown and required. The server prunes the
-  // fields the chosen type does not use, so switching type cannot leave stale
-  // media or a stale CTA on the allocation.
-  const [messageType, setMessageType] = useState<MessageTypeValue>(
-    values.messageType,
-  );
+  // Local editing state for the live preview and the button rows. The server
+  // re-derives everything from the submitted FormData, so none of this is trusted.
+  const [messageText, setMessageText] = useState(values.messageText);
+  const [buttons, setButtons] = useState<ContentButtonValue[]>(values.buttons);
+  const [images, setImages] = useState({
+    image1Key: values.image1Key,
+    image2Key: values.image2Key,
+  });
 
   useEffect(() => {
     if (state.status === "success") {
@@ -63,11 +68,27 @@ export function CampaignForm({
   const fieldError = (field: string): string | undefined =>
     state.status === "error" ? state.fieldErrors?.[field]?.[0] : undefined;
 
+  const updateButton = (index: number, patch: Partial<ContentButtonValue>) => {
+    setButtons((current) =>
+      current.map((button, position) =>
+        position === index ? { ...button, ...patch } : button,
+      ),
+    );
+  };
+
   return (
     <form action={formAction} className="space-y-6" noValidate>
       {values.id ? (
         <input type="hidden" name="campaignId" value={values.id} />
       ) : null}
+      {/* New saves always store the unified block; legacy shapes are read-only. */}
+      <input type="hidden" name="messageType" value="RICH" />
+      {/* Legacy columns travel unchanged so an older row keeps its data. */}
+      <input type="hidden" name="mediaKey" value={values.mediaKey} />
+      <input type="hidden" name="mediaMime" value={values.mediaMime} />
+      <input type="hidden" name="mediaCaption" value={values.mediaCaption} />
+      <input type="hidden" name="ctaLabel" value={values.ctaLabel} />
+      <input type="hidden" name="ctaUrl" value={values.ctaUrl} />
 
       {state.status === "error" ? (
         <div
@@ -122,55 +143,17 @@ export function CampaignForm({
 
       <fieldset className="space-y-4" disabled={pending}>
         <legend className="text-sm font-black uppercase tracking-widest">
-          Konfigurasi Baileys
+          Konten pesan
         </legend>
 
-        <div className="space-y-2">
-          <span className="text-xs font-black uppercase tracking-widest">
-            Tipe pesan
-          </span>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {MESSAGE_TYPE_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className={`flex min-h-11 cursor-pointer flex-col justify-center gap-1 border-4 border-black p-3 text-left ${
-                  messageType === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-foreground"
-                }`}
-              >
-                <span className="flex items-center gap-2 text-sm font-black uppercase">
-                  <input
-                    type="radio"
-                    name="messageType"
-                    value={option.value}
-                    checked={messageType === option.value}
-                    onChange={() => setMessageType(option.value)}
-                    className="size-4 border-2 border-black accent-primary"
-                  />
-                  {option.label}
-                </span>
-                <span className="text-xs font-bold leading-snug">
-                  {option.hint}
-                </span>
-              </label>
-            ))}
-          </div>
-          {fieldError("messageType") ? (
-            <p
-              role="alert"
-              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
-            >
-              {fieldError("messageType")}
-            </p>
-          ) : null}
-        </div>
+        <p className="border-4 border-black bg-surface p-3 text-xs font-bold uppercase leading-snug">
+          Satu blok konten dikirim sebagai satu pesan WhatsApp: maksimal 2 gambar,
+          isi pesan, dan maksimal {MAX_CONTENT_BUTTONS} tombol.
+        </p>
 
         <Field
           id="messageText"
-          label={
-            messageType === "IMAGE" ? "Isi pesan (caption)" : "Isi pesan"
-          }
+          label="Isi pesan"
           error={fieldError("messageText")}
         >
           <textarea
@@ -179,74 +162,198 @@ export function CampaignForm({
             required
             maxLength={4096}
             rows={5}
-            defaultValue={values.messageText}
+            value={messageText}
+            onChange={(event) => setMessageText(event.target.value)}
             className="w-full border-4 border-black bg-background p-3 font-mono text-sm"
           />
         </Field>
 
-        {messageType === "IMAGE" ? (
-          <>
-            <input type="hidden" name="mediaKey" value={values.mediaKey} />
-            <input type="hidden" name="mediaMime" value={values.mediaMime} />
-            <Field
-              id="mediaFile"
-              label={
-                values.mediaKey
-                  ? "Ganti gambar (biarkan kosong untuk mempertahankan)"
-                  : "Unggah gambar"
-              }
-              error={fieldError("mediaFile") ?? fieldError("mediaKey")}
-            >
-              <Input
-                id="mediaFile"
-                name="mediaFile"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-              />
-            </Field>
-            <Field
-              id="mediaCaption"
-              label="Caption gambar (opsional)"
-              error={fieldError("mediaCaption")}
-            >
-              <Input
-                id="mediaCaption"
-                name="mediaCaption"
-                maxLength={1024}
-                defaultValue={values.mediaCaption}
-                placeholder="Pesan singkat di bawah gambar"
-              />
-            </Field>
-          </>
-        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {([1, 2] as const).map((slot) => {
+            const keyField = slot === 1 ? "image1Key" : "image2Key";
+            const mimeField = slot === 1 ? "image1Mime" : "image2Mime";
+            const currentKey = images[keyField];
+            const currentMime =
+              slot === 1 ? values.image1Mime : values.image2Mime;
 
-        {messageType === "BUTTON" ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              id="ctaLabel"
-              label="Label tombol"
-              error={fieldError("ctaLabel")}
+            return (
+              <div key={slot} className="space-y-2">
+                {/* The existing key/mime survive an edit that does not re-upload. */}
+                <input type="hidden" name={keyField} value={currentKey} />
+                <input type="hidden" name={mimeField} value={currentMime} />
+
+                <Field
+                  id={`image${slot}File`}
+                  label={
+                    currentKey
+                      ? `Ganti gambar ${slot}`
+                      : `Unggah gambar ${slot} (opsional)`
+                  }
+                  error={fieldError(`image${slot}File`) ?? fieldError(keyField)}
+                >
+                  <Input
+                    id={`image${slot}File`}
+                    name={`image${slot}File`}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                  />
+                </Field>
+
+                {currentKey ? (
+                  <label className="flex min-h-11 items-center gap-2 border-4 border-black bg-background px-3 text-xs font-black uppercase">
+                    <input
+                      type="checkbox"
+                      name={`image${slot}Clear`}
+                      className="size-4 border-2 border-black accent-primary"
+                      onChange={(event) =>
+                        setImages((current) => ({
+                          ...current,
+                          [keyField]: event.target.checked ? "" : currentKey,
+                        }))
+                      }
+                    />
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                    Hapus gambar {slot}
+                  </label>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase text-foreground">
+                    <ImagePlus className="size-3.5" aria-hidden="true" />
+                    JPG, PNG, atau WebP
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-xs font-black uppercase tracking-widest">
+            Tombol ({buttons.length}/{MAX_CONTENT_BUTTONS})
+          </span>
+
+          {buttons.map((button, index) => {
+            const variant =
+              BUTTON_VARIANT_OPTIONS.find(
+                (option) => option.value === button.variant,
+              ) ?? BUTTON_VARIANT_OPTIONS[0];
+
+            return (
+              <div
+                key={index}
+                className="space-y-3 border-4 border-black bg-surface p-3"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    id={`buttonVariant-${index}`}
+                    label="Jenis tombol"
+                    error={fieldError(`buttons.${index}.variant`)}
+                  >
+                    <select
+                      id={`buttonVariant-${index}`}
+                      name="buttonVariant"
+                      value={button.variant}
+                      onChange={(event) =>
+                        updateButton(index, {
+                          variant: event.target
+                            .value as ContentButtonValue["variant"],
+                        })
+                      }
+                      className="min-h-11 w-full border-4 border-black bg-background px-3 text-sm font-bold"
+                    >
+                      {BUTTON_VARIANT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    id={`buttonLabel-${index}`}
+                    label="Label tombol"
+                    error={fieldError(`buttons.${index}.label`)}
+                  >
+                    <Input
+                      id={`buttonLabel-${index}`}
+                      name="buttonLabel"
+                      maxLength={64}
+                      value={button.label}
+                      onChange={(event) =>
+                        updateButton(index, { label: event.target.value })
+                      }
+                      placeholder="Lihat detail"
+                    />
+                  </Field>
+                </div>
+
+                <Field
+                  id={`buttonValue-${index}`}
+                  label={variant.valueLabel}
+                  error={fieldError(`buttons.${index}.value`)}
+                >
+                  <Input
+                    id={`buttonValue-${index}`}
+                    name="buttonValue"
+                    maxLength={2048}
+                    value={button.value}
+                    onChange={(event) =>
+                      updateButton(index, { value: event.target.value })
+                    }
+                    placeholder={variant.placeholder}
+                    readOnly={button.variant === "REPLY"}
+                  />
+                </Field>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setButtons((current) =>
+                      current.filter((_, position) => position !== index),
+                    )
+                  }
+                >
+                  <Trash2 aria-hidden="true" />
+                  Hapus tombol
+                </Button>
+              </div>
+            );
+          })}
+
+          {buttons.length < MAX_CONTENT_BUTTONS ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setButtons((current) => [
+                  ...current,
+                  { variant: "URL", label: "", value: "" },
+                ])
+              }
             >
-              <Input
-                id="ctaLabel"
-                name="ctaLabel"
-                maxLength={64}
-                defaultValue={values.ctaLabel}
-                placeholder="Lihat detail"
-              />
-            </Field>
-            <Field id="ctaUrl" label="URL tombol" error={fieldError("ctaUrl")}>
-              <Input
-                id="ctaUrl"
-                name="ctaUrl"
-                type="url"
-                maxLength={2048}
-                defaultValue={values.ctaUrl}
-                placeholder="https://contoh.com/promo"
-              />
-            </Field>
-          </div>
-        ) : null}
+              <Plus aria-hidden="true" />
+              Tambah tombol
+            </Button>
+          ) : null}
+
+          {fieldError("buttons") ? (
+            <p
+              role="alert"
+              className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground"
+            >
+              {fieldError("buttons")}
+            </p>
+          ) : null}
+        </div>
+
+        <ContentBlockPreview
+          messageText={messageText}
+          image1Key={images.image1Key}
+          image2Key={images.image2Key}
+          buttons={buttons}
+        />
       </fieldset>
 
       <CampaignDeliveryFields

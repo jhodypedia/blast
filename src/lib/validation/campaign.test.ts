@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   campaignTransitionSchema,
   createCampaignSchema,
+  normalizeCampaignContent,
 } from "@/lib/validation/campaign";
 
 /**
@@ -117,16 +118,134 @@ describe("createCampaignSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("defaults the message type to TEXT", () => {
+  it("defaults the message type to RICH", () => {
     const result = createCampaignSchema.safeParse(base);
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.messageType).toBe("TEXT");
+      expect(result.data.messageType).toBe("RICH");
+      expect(result.data.buttons).toEqual([]);
     }
   });
 
-  it("requires media for an image message", () => {
+  it("accepts a text-only content block", () => {
+    const result = createCampaignSchema.safeParse({ ...base, buttons: [] });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.image1Key).toBeUndefined();
+      expect(result.data.buttons).toHaveLength(0);
+    }
+  });
+
+  it("accepts a content block with one image", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      image1Key: "campaign-media/2026-01-01/one.png",
+      image1Mime: "image/png",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a content block with two images", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      image1Key: "campaign-media/2026-01-01/one.png",
+      image1Mime: "image/png",
+      image2Key: "campaign-media/2026-01-01/two.webp",
+      image2Mime: "image/webp",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a second image without a first", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      image2Key: "campaign-media/2026-01-01/two.webp",
+      image2Mime: "image/webp",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("image1Key")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects an image key without a content type", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      image1Key: "campaign-media/2026-01-01/one.png",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("image1Mime")),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts a buttons-only content block with every variant", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      buttons: [
+        { variant: "URL", label: "Buka", value: "https://example.com/promo" },
+        { variant: "REPLY", label: "Balas" },
+        { variant: "COPY", label: "Salin", value: "PROMO2026" },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.buttons).toHaveLength(3);
+    }
+  });
+
+  it("rejects more than three buttons", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      buttons: Array.from({ length: 4 }, (_, index) => ({
+        variant: "REPLY",
+        label: `Balas ${index}`,
+      })),
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("buttons")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects a URL button without a valid URL", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      buttons: [{ variant: "URL", label: "Buka", value: "not-a-url" }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("value")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects a CALL button without a phone number", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      buttons: [{ variant: "CALL", label: "Telepon" }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("requires media for a legacy image message", () => {
     const result = createCampaignSchema.safeParse({
       ...base,
       messageType: "IMAGE",
@@ -151,7 +270,7 @@ describe("createCampaignSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("requires a label and URL for a button message", () => {
+  it("requires a label and URL for a legacy button message", () => {
     const result = createCampaignSchema.safeParse({
       ...base,
       messageType: "BUTTON",
@@ -183,6 +302,60 @@ describe("createCampaignSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("normalizeCampaignContent", () => {
+  it("upgrades a legacy mediaKey + ctaLabel payload into the content block", () => {
+    const result = createCampaignSchema.safeParse(
+      normalizeCampaignContent({
+        ...base,
+        messageType: "IMAGE",
+        mediaKey: "campaign-media/2026-01-01/legacy.png",
+        mediaMime: "image/png",
+        ctaLabel: "Book now",
+        ctaUrl: "https://example.com/book",
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.image1Key).toBe(
+        "campaign-media/2026-01-01/legacy.png",
+      );
+      expect(result.data.image1Mime).toBe("image/png");
+      expect(result.data.buttons).toEqual([
+        {
+          variant: "URL",
+          label: "Book now",
+          value: "https://example.com/book",
+        },
+      ]);
+      // The legacy columns survive so an older reader keeps working.
+      expect(result.data.mediaKey).toBe("campaign-media/2026-01-01/legacy.png");
+      expect(result.data.ctaLabel).toBe("Book now");
+    }
+  });
+
+  it("never overwrites a block the caller already supplied", () => {
+    const normalized = normalizeCampaignContent({
+      image1Key: "campaign-media/new.png",
+      image1Mime: "image/png",
+      mediaKey: "campaign-media/legacy.png",
+      mediaMime: "image/png",
+      buttons: [{ variant: "REPLY", label: "Balas" }],
+      ctaLabel: "Legacy",
+      ctaUrl: "https://example.com",
+    });
+
+    expect(normalized.image1Key).toBe("campaign-media/new.png");
+    expect(normalized.buttons).toEqual([{ variant: "REPLY", label: "Balas" }]);
+  });
+
+  it("ignores an incomplete legacy CTA", () => {
+    const normalized = normalizeCampaignContent({ ctaLabel: "Book now" });
+
+    expect(normalized.buttons).toBeUndefined();
   });
 });
 

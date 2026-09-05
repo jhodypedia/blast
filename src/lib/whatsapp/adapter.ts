@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import makeWASocket, {
   Button,
+  Carousel,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } from "@rexxhayanasi/elaina-baileys";
@@ -13,11 +14,14 @@ import {
   SHADOW_BAN_ERROR_CODE,
   SHADOW_BAN_STATUS_CODES,
 } from "@/lib/constants";
+import { resolveStoragePath } from "@/lib/storage/private-storage";
 import { clearAuthState, loadAuthState } from "@/lib/whatsapp/auth-state";
+import { planContent, type ContentPlan } from "@/lib/whatsapp/content";
 import { classifySendError } from "@/lib/whatsapp/errors";
 import type {
   ConnectionUpdate,
   DeviceConnectionState,
+  OutgoingButton,
   OutgoingMessage,
   PairingChallenge,
   PairingRequest,
@@ -429,6 +433,121 @@ function getState(deviceId: string): DeviceConnectionState {
   return sockets.get(deviceId)?.state ?? "DISCONNECTED";
 }
 
+/**
+ * Renders one content plan into a Baileys send.
+ *
+ * `Button`/`Carousel` need the socket, and every image is read from private
+ * storage here — this is the only layer allowed to resolve a storage key — so the
+ * plan itself stays free of both concerns. Returns a thunk instead of content
+ * because a carousel is relayed rather than sent through `sendMessage`.
+ */
+async function renderPlan(
+  handle: SocketHandle,
+  jid: string,
+  plan: ContentPlan,
+): Promise<() => Promise<unknown>> {
+  const read = (image: { storageKey: string }) =>
+    readFile(resolveStoragePath(image.storageKey));
+
+  switch (plan.kind) {
+    case "TEXT": {
+      const content = { text: plan.text };
+      return () => handle.socket.sendMessage(jid, content as never);
+    }
+
+    case "IMAGE": {
+      const content = {
+        image: await read(plan.image),
+        mimetype: plan.image.mimeType,
+        caption: plan.text,
+      };
+      return () => handle.socket.sendMessage(jid, content as never);
+    }
+
+    case "BUTTONS": {
+      const builder = new Button(handle.socket).setBody(plan.text);
+      if (plan.image) {
+        builder.setImage(await read(plan.image));
+      }
+      applyButtons(builder, plan.buttons);
+      const message = await builder.build(jid);
+      return () => relay(handle, message);
+    }
+
+    case "CAROUSEL": {
+      const carousel = new Carousel(handle.socket).setBody(plan.text);
+      for (const card of plan.cards) {
+        const builder = new Button(handle.socket)
+          .setBody(plan.text)
+          .setImage(await read(card.image));
+        applyButtons(builder, card.buttons);
+        carousel.addCard(await builder.toCard());
+      }
+      const message = await carousel.build(jid);
+      return () => relay(handle, message);
+    }
+  }
+}
+
+/** Adds the block's buttons to an interactive builder, in configured order. */
+function applyButtons(builder: Button, buttons: OutgoingButton[]): void {
+  for (const [index, button] of buttons.entries()) {
+    switch (button.variant) {
+      case "URL":
+        builder.addUrl(button.label, button.value ?? "");
+        break;
+      case "REPLY":
+        // A stable, non-sensitive payload id so an inbound reply is attributable.
+        builder.addReply(button.label, `reply_${index + 1}`);
+        break;
+      case "COPY":
+        builder.addCopy(button.label, button.value ?? "");
+        break;
+      case "CALL":
+        builder.addCall(button.label, button.value ?? "");
+        break;
+    }
+  }
+}
+
+/**
+ * Relays a pre-built interactive message.
+ *
+ * `generateWAMessageFromContent` output cannot go through `sendMessage`; the
+ * native-flow node below is what makes WhatsApp render the buttons/carousel.
+ */
+async function relay(
+  handle: SocketHandle,
+  message: { key: { remoteJid?: string | null; id?: string | null }; message: unknown },
+): Promise<{ key?: { id?: string } }> {
+  await (
+    handle.socket as unknown as {
+      relayMessage: (
+        jid: string,
+        content: unknown,
+        options: Record<string, unknown>,
+      ) => Promise<void>;
+    }
+  ).relayMessage(message.key.remoteJid ?? "", message.message, {
+    messageId: message.key.id,
+    additionalNodes: [
+      {
+        tag: "biz",
+        attrs: {},
+        content: [
+          {
+            tag: "interactive",
+            attrs: { type: "native_flow", v: "1" },
+            content: [{ tag: "native_flow", attrs: { v: "9", name: "mixed" } }],
+          },
+        ],
+      },
+    ],
+  });
+
+  return message as { key?: { id?: string } };
+}
+
 async function send(
   deviceId: string,
   message: OutgoingMessage,
@@ -450,29 +569,13 @@ async function send(
   let writeAttempted = false;
 
   try {
-    const cta = message.cta;
-    const content = cta
-      ? await (async () => {
-          const button = new Button(handle.socket)
-            .setBody(message.media?.caption ?? message.text)
-            .addUrl(cta.label, cta.url);
-          if (message.media) {
-            button.setImage(await readFile(message.media.storagePath));
-          }
-          return button.build(jid);
-        })()
-      : message.media
-        ? {
-            image: await readFile(message.media.storagePath),
-            mimetype: message.media.mimeType,
-            caption: message.media.caption ?? message.text,
-          }
-        : { text: message.text };
+    // The whole content block becomes exactly one send, whichever shape it needs.
+    const dispatch = await renderPlan(handle, jid, planContent(message));
 
     writeAttempted = true;
 
     const result = await Promise.race([
-      handle.socket.sendMessage(jid, content as never),
+      dispatch(),
       new Promise<never>((_resolve, reject) => {
         setTimeout(
           () => reject(new Error("Send timed out awaiting provider ack")),
