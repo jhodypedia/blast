@@ -28,7 +28,7 @@ unexercised against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | exit 0 — 232 tests, 22 files |
+| Unit tests | `npm test` (`vitest run`) | **re-run 2026-09-05: 22 files / 240 tests, all passed, 34.9s** |
 | Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
 | Build | `npm run build` | exit 0 |
 
@@ -767,6 +767,98 @@ intermittently loses even its built-in cmdlets (`cd`, `Get-Content`,
 log file; `npx` is not resolvable, so run vitest as
 `node node_modules\vitest\vitest.mjs`.
 
+## SKIP LOCKED 1064 on Startup — Expected, Not a Bug (2026-09-05)
+
+The two log lines below appear on every process that performs a locking read
+(web on first blast start, worker on first claim). They are **the capability
+probe working as designed**, not a failure:
+
+```
+prisma:error
+Invalid `prisma.$queryRaw()` invocation:
+Raw query failed. Code: `1064`. Message: `You have an error in your SQL syntax; ...
+near 'SKIP LOCKED' at line 1`
+{"level":"warn","scope":"db","event":"db.skip_locked_unsupported","msg":"Database does not support FOR UPDATE SKIP LOCKED; ..."}
+```
+
+`src/lib/db/locking.ts` deliberately *tries* `FOR UPDATE SKIP LOCKED` once, lets
+the server reject it, and downgrades to blocking `FOR UPDATE`. The `prisma:error`
+line is Prisma's own client-level `log: ["warn","error"]` output (see
+`src/lib/db/prisma.ts`), emitted before the `catch` in `detectRowLockMode` ever
+sees the error — it cannot be suppressed without silencing all Prisma errors, so
+it is left visible.
+
+### How to tell the probe apart from a real regression
+
+Read the SQL position in the 1064 message:
+
+- **`at line 1`** → the probe (`SELECT 1 FROM CampaignRecipient WHERE 1 = 0 FOR
+  UPDATE SKIP LOCKED`, a single line). Harmless.
+- **`at line 11`** (or any multi-line statement) → the allocation/claim query
+  itself is being rejected, i.e. the "Portable Row Locking Fix" has regressed or
+  a stale worker build is running. Investigate.
+
+### Re-verified on this machine (2026-09-05)
+
+| Check | Result |
+| --- | --- |
+| `SELECT VERSION()` on `DATABASE_URL` | `10.4.32-MariaDB` |
+| `rowLockMode(prisma)` via throwaway script | `BLOCKING` |
+| Second `rowLockMode()` call in same process | `BLOCKING`, **no second probe** — one 1064 line and one warn line total, so worker logs are not flooded |
+| `... FOR UPDATE SKIP LOCKED` direct in mysql CLI | 1064 |
+| plain `FOR UPDATE` (both real locking reads, zero-match predicates, rolled back) | OK |
+| `src/lib/db/locking.test.ts` | **18/18 passed** (`vitest run`, 1.93s); full suite also re-run: **22 files / 240 tests passed** |
+| `@@innodb_lock_wait_timeout` / `@@tx_isolation` | `50` / `REPEATABLE-READ` (the claim transaction overrides to `ReadCommitted`) |
+| SKIP LOCKED-capable server anywhere locally | **none.** Only `c:\xampp\mysql\bin\mysqld.exe` listening, port 3306 only; no 3307, no `C:\Program Files\MySQL`, no `.tools/`, no `docker` on PATH |
+
+### Cost of the blocking fallback (measured, not guessed)
+
+`EXPLAIN` of the claim query in `src/lib/delivery/recipient-claim.ts` on 10.4:
+
+```
+type: index   key: PRIMARY   key_len: 8   Extra: Using where
+```
+
+MariaDB 10.4 walks the PRIMARY key in `id` order to satisfy
+`ORDER BY id ASC LIMIT n` instead of ranging on
+`CampaignRecipient_campaignId_blastJobId_status_idx`. The two `OR` branches
+(`blastJobId IS NULL OR blastJobId = ?`, and `PENDING OR RETRYABLE_FAILED`) block
+a clean single-index range scan. The table currently holds 2 rows, so the plan is
+not yet meaningful — but it means the lock scan examines rows belonging to *other*
+campaigns, so under the blocking clause two workers on unrelated campaigns can
+transiently serialise. `isolationLevel: "ReadCommitted"` limits the damage
+(InnoDB releases locks on non-matching rows and largely drops gap locks under
+READ COMMITTED). Every index the query could want already exists; nothing to add.
+
+Timeout interaction worth knowing: the claim transaction sets
+`{ timeout: 10_000 }`, well under `innodb_lock_wait_timeout = 50`. So a
+contended claim surfaces as a **Prisma P2028 transaction timeout, not an InnoDB
+1205 lock-wait timeout**. In practice the window is small — `claimRecipients`
+holds locks only for a `SELECT` plus an `updateMany` and makes no network call
+inside the transaction — so this has not been observed. It is a latent risk, not
+a current failure.
+
+### Dev posture recommendation (decision still open)
+
+`.env` currently has `WORKER_CONCURRENCY="4"`, applied to both the delivery and
+device-session workers in `src/worker/main.ts`. Against 3306 that buys nothing
+(claims serialise anyway) and only widens the contention window. Two acceptable
+options, in preference order:
+
+1. Provision MySQL >= 8.0 / MariaDB >= 10.6 again, repoint `DATABASE_URL` /
+   `INTEGRATION_DATABASE_URL`, run `npm run db:test:setup`, and get
+   `npm run test:integration` back (also closes gap 4 and the first "Next Task").
+2. Stay on XAMPP 10.4 and set `WORKER_CONCURRENCY=1` in dev so blocking claims
+   never queue. Production must still be >= MySQL 8.0 / MariaDB 10.6.
+
+Neither was applied — `.env` is unchanged.
+
+Note on `tests/integration/db-capabilities.ts`: it **fails loudly** rather than
+skipping when `SKIP LOCKED` is missing, and that is intentional. Those suites
+assert disjoint concurrent batches, a guarantee only `SKIP LOCKED` provides;
+skipping them would report green while the invariant went unverified. Do not
+convert it to a skip.
+
 ## Known Gaps
 
 1. **Integration coverage is delivery-only.** `tests/integration/delivery-invariants.integration.test.ts`
@@ -790,14 +882,17 @@ log file; `npx` is not resolvable, so run vitest as
 4. **Dev throughput on XAMPP (3306) is serialised, not broken.** It is MariaDB
    10.4, which has no `FOR UPDATE SKIP LOCKED`, so `src/lib/db/locking.ts` falls
    back to a blocking `FOR UPDATE` there (one warning line per process,
-   `event: "db.skip_locked_unsupported"`). Starting a blast job and claiming
-   recipients both work; parallel workers queue behind each other instead of
-   taking disjoint batches. Production should still use MySQL >= 8.0 or
-   MariaDB >= 10.6. Note the portable 11.4 instance on 3307 and the `.tools/`
-   directory described above **no longer exist on this machine** — the port is
-   closed and only XAMPP's `mysqld` is running, so `npm run test:integration`
-   cannot run until a supported server is provisioned again and
-   `npm run db:test:setup` is re-run.
+   `event: "db.skip_locked_unsupported"`, **preceded by an expected
+   `prisma:error … 1064 … near 'SKIP LOCKED' at line 1`** — see "SKIP LOCKED 1064
+   on Startup" above before investigating it again). Starting a blast job and
+   claiming recipients both work; parallel workers queue behind each other
+   instead of taking disjoint batches. Production should still use MySQL >= 8.0
+   or MariaDB >= 10.6. Note the portable 11.4 instance on 3307 and the `.tools/`
+   directory described above **no longer exist on this machine** — re-confirmed
+   2026-09-05: only `c:\xampp\mysql\bin\mysqld.exe` is listening, on 3306 alone,
+   with no `C:\Program Files\MySQL` and no `docker` on PATH, so
+   `npm run test:integration` cannot run until a supported server is provisioned
+   again and `npm run db:test:setup` is re-run.
 5. **Portable Redis and MariaDB are not services.** Both must be relaunched after
    every reboot or logout (commands under "Local infrastructure"); a stale
    assumption here shows up as connection-refused rather than as a clear error.
