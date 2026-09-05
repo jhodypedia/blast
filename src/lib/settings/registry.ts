@@ -87,7 +87,9 @@ export const settingDefaults: {
   [SETTING_KEYS.sessionHours]: 8,
   [SETTING_KEYS.maintenanceMode]: { enabled: false, message: "" },
   [SETTING_KEYS.allowedSpeeds]: [1, 3, 6, 10],
-  [SETTING_KEYS.maxActiveJobsPerUser]: 2,
+  // Bulk blast opens one job per connected device, so the default ceiling matches
+  // the device cap; a lower value would silently stop the fan-out part-way.
+  [SETTING_KEYS.maxActiveJobsPerUser]: DEFAULT_MAX_DEVICES_PER_USER,
   [SETTING_KEYS.defaultPayoutPerSend]: "25",
   [SETTING_KEYS.defaultCurrency]: DEFAULT_CURRENCY,
   [SETTING_KEYS.deliveryLogRetentionDays]:

@@ -13,6 +13,7 @@ export type AdminCampaignRow = {
   id: string;
   name: string;
   status: string;
+  targetListId: string;
   targetListName: string;
   targetCount: number;
   payoutPerSend: string;
@@ -24,6 +25,26 @@ export type AdminCampaignRow = {
   scheduledStartAt: Date;
   scheduledEndAt: Date;
   createdAt: Date;
+  /** Full Baileys configuration, used to prefill the admin edit form. */
+  config: {
+    description: string;
+    internalNotes: string;
+    messageType: "TEXT" | "IMAGE" | "BUTTON";
+    messageText: string;
+    mediaKey: string;
+    mediaMime: string;
+    mediaCaption: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    deviceModePolicy: "SINGLE_DEVICE" | "ALL_DEVICES";
+    allowedSpeeds: number[];
+    maxConcurrentJobs: number;
+    assignmentPolicy: "ALL_ELIGIBLE" | "SELECTED_USERS";
+    assignedUserIds: string[];
+    allowUserPause: boolean;
+    requireTermsAccept: boolean;
+    retryLimit: number;
+  };
 };
 
 export async function listCampaignsForAdmin(params?: {
@@ -50,13 +71,31 @@ export async function listCampaignsForAdmin(params?: {
         id: true,
         name: true,
         status: true,
+        description: true,
+        internalNotes: true,
+        messageType: true,
+        messageText: true,
+        mediaKey: true,
+        mediaMime: true,
+        mediaCaption: true,
+        ctaLabel: true,
+        ctaUrl: true,
+        targetListId: true,
+        deviceModePolicy: true,
+        allowedSpeeds: true,
         payoutPerSend: true,
         currency: true,
         quotaPerUser: true,
+        maxConcurrentJobs: true,
+        assignmentPolicy: true,
+        allowUserPause: true,
+        requireTermsAccept: true,
+        retryLimit: true,
         scheduledStartAt: true,
         scheduledEndAt: true,
         createdAt: true,
         targetList: { select: { name: true, importedCount: true } },
+        assignments: { select: { userId: true } },
         _count: { select: { recipients: true, blastJobs: true } },
       },
     }),
@@ -82,6 +121,7 @@ export async function listCampaignsForAdmin(params?: {
       id: row.id,
       name: row.name,
       status: row.status,
+      targetListId: row.targetListId,
       targetListName: row.targetList.name,
       targetCount: row.targetList.importedCount,
       payoutPerSend: row.payoutPerSend.toString(),
@@ -93,6 +133,27 @@ export async function listCampaignsForAdmin(params?: {
       scheduledStartAt: row.scheduledStartAt,
       scheduledEndAt: row.scheduledEndAt,
       createdAt: row.createdAt,
+      config: {
+        description: row.description,
+        internalNotes: row.internalNotes ?? "",
+        messageType: row.messageType,
+        messageText: row.messageText,
+        mediaKey: row.mediaKey ?? "",
+        mediaMime: row.mediaMime ?? "",
+        mediaCaption: row.mediaCaption ?? "",
+        ctaLabel: row.ctaLabel ?? "",
+        ctaUrl: row.ctaUrl ?? "",
+        deviceModePolicy: row.deviceModePolicy,
+        allowedSpeeds: Array.isArray(row.allowedSpeeds)
+          ? (row.allowedSpeeds as number[])
+          : [],
+        maxConcurrentJobs: row.maxConcurrentJobs,
+        assignmentPolicy: row.assignmentPolicy,
+        assignedUserIds: row.assignments.map((assignment) => assignment.userId),
+        allowUserPause: row.allowUserPause,
+        requireTermsAccept: row.requireTermsAccept,
+        retryLimit: row.retryLimit,
+      },
     })),
   };
 }

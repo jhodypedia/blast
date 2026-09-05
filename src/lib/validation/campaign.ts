@@ -23,6 +23,14 @@ export const allowedSpeedsSchema = z
     message: "Sending speeds must be unique",
   });
 
+/**
+ * Baileys message shape. Discriminates which content fields the sender uses;
+ * the cross-field rules below make the combination impossible to get wrong.
+ */
+export const messageTypeSchema = z.enum(["TEXT", "IMAGE", "BUTTON"]);
+
+export type MessageTypeInput = z.infer<typeof messageTypeSchema>;
+
 const campaignBaseSchema = z.object({
   name: z.string().trim().min(3, "Name must be at least 3 characters").max(120),
   description: z
@@ -32,6 +40,7 @@ const campaignBaseSchema = z.object({
     .max(500, "Description must be at most 500 characters"),
   internalNotes: z.string().trim().max(2000).optional(),
 
+  messageType: messageTypeSchema.default("TEXT"),
   messageText: z
     .string()
     .trim()
@@ -90,7 +99,27 @@ const withCrossFieldRules = <T extends typeof campaignBaseSchema>(schema: T) =>
     .refine((data) => !data.mediaKey || Boolean(data.mediaMime), {
       path: ["mediaMime"],
       message: "Media requires a content type",
-    });
+    })
+    // The message type is the contract the sender reads, so the fields it needs
+    // must be present at validation time rather than at send time.
+    .refine(
+      (data) =>
+        data.messageType !== "IMAGE" ||
+        (Boolean(data.mediaKey) && Boolean(data.mediaMime)),
+      {
+        path: ["mediaKey"],
+        message: "An image message requires an uploaded image",
+      },
+    )
+    .refine(
+      (data) =>
+        data.messageType !== "BUTTON" ||
+        (Boolean(data.ctaLabel) && Boolean(data.ctaUrl)),
+      {
+        path: ["ctaLabel"],
+        message: "A button message requires a button label and URL",
+      },
+    );
 
 export const createCampaignSchema = withCrossFieldRules(campaignBaseSchema);
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;

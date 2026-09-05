@@ -179,7 +179,15 @@ async function expireCampaigns(): Promise<void> {
   );
 }
 
-/** Prunes delivery and operational logs according to the retention policy. */
+/**
+ * Prunes delivery and operational logs according to the retention policy.
+ *
+ * Two windows apply to `DeliveryLog`. The operator-visible window is 24 hours
+ * (`USER_DELIVERY_LOG_WINDOW_HOURS`) and is enforced on read, so nothing has to
+ * be deleted for it to take effect; the admin retention window is longer and is
+ * what actually removes rows here. Financial and audit records live in the
+ * ledger and audit tables and are never touched by this sweep (RULES.md §16).
+ */
 async function pruneLogs(): Promise<void> {
   const retentionDays = await getSetting(SETTING_KEYS.deliveryLogRetentionDays);
 

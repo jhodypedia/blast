@@ -6,6 +6,31 @@ import { Label } from "@/components/ui/label";
 
 export const SPEED_OPTIONS = [1, 3, 6, 10];
 
+/** Baileys message shapes an admin may configure for an allocation. */
+export const MESSAGE_TYPE_OPTIONS = [
+  {
+    value: "TEXT",
+    label: "Teks saja",
+    hint: "Hanya isi pesan, tanpa gambar atau tombol.",
+  },
+  {
+    value: "IMAGE",
+    label: "Pesan dengan gambar",
+    hint: "Perlu unggahan gambar. Isi pesan dipakai sebagai caption.",
+  },
+  {
+    value: "BUTTON",
+    label: "Pesan dengan tombol",
+    hint: "Perlu label dan URL tombol call-to-action.",
+  },
+] as const satisfies ReadonlyArray<{
+  value: MessageTypeValue;
+  label: string;
+  hint: string;
+}>;
+
+export type MessageTypeValue = "TEXT" | "IMAGE" | "BUTTON";
+
 export type CampaignFormOption = { id: string; label: string };
 
 export type CampaignFormValues = {
@@ -13,6 +38,8 @@ export type CampaignFormValues = {
   name: string;
   description: string;
   internalNotes: string;
+  /** Discriminates which content fields the sender uses. */
+  messageType: MessageTypeValue;
   messageText: string;
   mediaKey: string;
   mediaMime: string;

@@ -218,6 +218,72 @@ export async function archiveTargetList(params: {
 }
 
 /**
+ * Aggregate target-number statistics for the Target Nomor overview.
+ *
+ * Counts only: uploaded numbers, numbers already allocated into an operator's
+ * recipient rows, and the delivery outcome of those rows. No number is ever
+ * projected, so this is safe for any admin surface (RULES.md §10).
+ */
+export type TargetAllocationStats = {
+  uploaded: number;
+  allocated: number;
+  remaining: number;
+  sent: number;
+  error: number;
+  pending: number;
+};
+
+export async function getTargetAllocationStats(): Promise<TargetAllocationStats> {
+  const [uploaded, allocated, byStatus] = await Promise.all([
+    // Numbers live under a list; archived lists stay counted because their
+    // recipients and delivery history remain valid.
+    prisma.targetNumber.count(),
+    prisma.campaignRecipient.count(),
+    prisma.campaignRecipient.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+  ]);
+
+  let sent = 0;
+  let error = 0;
+  let pending = 0;
+
+  for (const row of byStatus) {
+    const amount = row._count._all;
+
+    switch (row.status) {
+      case "SENT":
+        sent += amount;
+        break;
+      case "FAILED":
+      case "UNKNOWN":
+      case "RECONCILIATION_REQUIRED":
+        error += amount;
+        break;
+      case "PENDING":
+      case "CLAIMED":
+      case "SENDING":
+      case "RETRYABLE_FAILED":
+        pending += amount;
+        break;
+      default:
+        // CANCELLED and SKIPPED are resolved without a delivery outcome.
+        break;
+    }
+  }
+
+  return {
+    uploaded,
+    allocated,
+    remaining: Math.max(uploaded - allocated, 0),
+    sent,
+    error,
+    pending,
+  };
+}
+
+/**
  * Returns the masked invalid-row report for one list.
  *
  * Samples are masked at parse time, so nothing here can leak a full number.

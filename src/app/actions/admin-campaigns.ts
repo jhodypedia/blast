@@ -81,6 +81,7 @@ function campaignFormPayload(formData: FormData) {
     name: formData.get("name"),
     description: formData.get("description"),
     internalNotes: formData.get("internalNotes") ?? undefined,
+    messageType: formData.get("messageType") ?? "TEXT",
     messageText: formData.get("messageText"),
     mediaKey: formData.get("mediaKey") ?? undefined,
     mediaMime: formData.get("mediaMime") ?? undefined,
@@ -106,11 +107,50 @@ function campaignFormPayload(formData: FormData) {
   };
 }
 
+/**
+ * Discards content that the selected message type does not use.
+ *
+ * The admin form keeps hidden inputs for every shape so switching type does not
+ * lose a draft, but persisting a stale CTA on a TEXT allocation would let the
+ * sender pick the wrong content later. The schema then validates that whatever
+ * the chosen type *does* require is present.
+ */
+function pruneUnusedContent(input: Record<string, unknown>) {
+  const messageType = input.messageType;
+
+  if (messageType === "IMAGE") {
+    return { ...input, ctaLabel: undefined, ctaUrl: undefined };
+  }
+  if (messageType === "BUTTON") {
+    return {
+      ...input,
+      mediaKey: undefined,
+      mediaMime: undefined,
+      mediaCaption: undefined,
+    };
+  }
+  return {
+    ...input,
+    mediaKey: undefined,
+    mediaMime: undefined,
+    mediaCaption: undefined,
+    ctaLabel: undefined,
+    ctaUrl: undefined,
+  };
+}
+
 async function withCampaignMedia(formData: FormData, input: Record<string, unknown>) {
   const mediaFile = formData.get("mediaFile");
   if (!(mediaFile instanceof File) || mediaFile.size === 0) return input;
   const media = await saveCampaignMediaUpload({ file: mediaFile });
   return { ...input, mediaKey: media.storageKey, mediaMime: media.mimeType };
+}
+
+/** Builds the validated payload: media upload first, then type-based pruning. */
+async function allocationPayload(formData: FormData) {
+  return pruneUnusedContent(
+    await withCampaignMedia(formData, campaignFormPayload(formData)),
+  );
 }
 
 export async function createCampaignAction(
@@ -122,7 +162,7 @@ export async function createCampaignAction(
     await enforceRateLimit(RATE_LIMITS.adminMutation, actor.id);
 
     const parsed = createCampaignSchema.safeParse(
-      await withCampaignMedia(formData, campaignFormPayload(formData)),
+      await allocationPayload(formData),
     );
 
     if (!parsed.success) {
@@ -164,7 +204,7 @@ export async function updateCampaignAction(
     }
 
     const parsed = updateCampaignSchema.safeParse(
-      await withCampaignMedia(formData, campaignFormPayload(formData)),
+      await allocationPayload(formData),
     );
 
     if (!parsed.success) {

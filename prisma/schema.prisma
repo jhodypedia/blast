@@ -70,6 +70,16 @@ enum AssignmentPolicy {
   SELECTED_USERS
 }
 
+/// Baileys message shape an ADMIN configures for a target-number allocation.
+/// TEXT   -> conversation message, `messageText` only.
+/// IMAGE  -> image message, requires `mediaKey` + `mediaMime`, caption optional.
+/// BUTTON -> templated CTA message, requires `ctaLabel` + `ctaUrl`.
+enum MessageType {
+  TEXT
+  IMAGE
+  BUTTON
+}
+
 enum BlastJobStatus {
   PENDING
   QUEUED
@@ -314,6 +324,10 @@ model Campaign {
   archivedAt DateTime?
 
   // --- Content -------------------------------------------------------------
+  /// Discriminates which content fields the sender must use. Validated by the
+  /// allocation schema so an IMAGE row always carries media and a BUTTON row
+  /// always carries a CTA (RULES.md §10).
+  messageType  MessageType @default(TEXT)
   messageText  String  @db.Text
   mediaKey     String? @db.VarChar(512)
   mediaMime    String? @db.VarChar(127)
@@ -388,6 +402,7 @@ model BlastJob {
 
   // --- Snapshot of campaign policy at creation time ------------------------
   snapshotContentVersion Int
+  snapshotMessageType    MessageType      @default(TEXT)
   snapshotMessageText    String           @db.Text
   snapshotMediaKey       String?          @db.VarChar(512)
   snapshotMediaMime      String?          @db.VarChar(127)

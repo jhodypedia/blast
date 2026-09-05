@@ -22,6 +22,7 @@ import type {
 /** Content fields whose change must bump `contentVersion`. */
 function contentChanged(
   before: {
+    messageType: "TEXT" | "IMAGE" | "BUTTON";
     messageText: string;
     mediaKey: string | null;
     mediaMime: string | null;
@@ -32,6 +33,7 @@ function contentChanged(
   after: UpdateCampaignInput,
 ): boolean {
   return (
+    before.messageType !== after.messageType ||
     before.messageText !== after.messageText ||
     (before.mediaKey ?? null) !== (after.mediaKey ?? null) ||
     (before.mediaMime ?? null) !== (after.mediaMime ?? null) ||
@@ -93,6 +95,7 @@ export async function createCampaign(params: {
         internalNotes: input.internalNotes ?? null,
         createdByAdminId: params.adminUserId,
         status: "DRAFT",
+        messageType: input.messageType,
         messageText: input.messageText,
         mediaKey: input.mediaKey ?? null,
         mediaMime: input.mediaMime ?? null,
@@ -174,6 +177,7 @@ export async function updateCampaign(params: {
     select: {
       id: true,
       status: true,
+      messageType: true,
       messageText: true,
       mediaKey: true,
       mediaMime: true,
@@ -222,6 +226,7 @@ export async function updateCampaign(params: {
         name: input.name,
         description: input.description,
         internalNotes: input.internalNotes ?? null,
+        messageType: input.messageType,
         messageText: input.messageText,
         mediaKey: input.mediaKey ?? null,
         mediaMime: input.mediaMime ?? null,

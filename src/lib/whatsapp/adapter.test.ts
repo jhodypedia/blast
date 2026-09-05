@@ -285,6 +285,51 @@ describe("whatsappAdapter restart handling", () => {
     expect(createdSockets).toHaveLength(1);
     expect(events.updates).toHaveLength(0);
   });
+
+  it("reports a forbidden close as a restriction and wipes the session", async () => {
+    const deviceId = nextDeviceId();
+    const events = recorder();
+
+    await adapter.whatsappAdapter.connect({
+      deviceId,
+      onUpdate: events.onUpdate,
+    });
+
+    closeWith(socketAt(0), 403);
+    await settle();
+
+    // A restricted number must never be reconnected automatically, so the
+    // credentials go and the caller is told to stop (RULES.md §8).
+    expect(createdSockets).toHaveLength(1);
+    expect(clearAuthState).toHaveBeenCalledWith(deviceId);
+    expect(events.updates.at(-1)).toEqual({
+      deviceId,
+      state: "ERROR",
+      errorCode: "SHADOW_BAN",
+      requiresReauth: true,
+    });
+  });
+
+  it("does not label an ordinary transport close as a restriction", async () => {
+    const deviceId = nextDeviceId();
+    const events = recorder();
+
+    await adapter.whatsappAdapter.connect({
+      deviceId,
+      onUpdate: events.onUpdate,
+    });
+
+    closeWith(socketAt(0), 428);
+    await settle();
+
+    expect(clearAuthState).not.toHaveBeenCalled();
+    expect(events.updates.at(-1)).toEqual({
+      deviceId,
+      state: "DISCONNECTED",
+      errorCode: "DISCONNECT_428",
+      requiresReauth: false,
+    });
+  });
 });
 
 describe("whatsappAdapter pairing challenges", () => {

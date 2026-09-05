@@ -9,6 +9,10 @@ import makeWASocket, {
 } from "@rexxhayanasi/elaina-baileys";
 
 import { logger } from "@/lib/observability/logger";
+import {
+  SHADOW_BAN_ERROR_CODE,
+  SHADOW_BAN_STATUS_CODES,
+} from "@/lib/constants";
 import { clearAuthState, loadAuthState } from "@/lib/whatsapp/auth-state";
 import { classifySendError } from "@/lib/whatsapp/errors";
 import type {
@@ -344,12 +348,31 @@ async function openSocket(
         }
 
         const loggedOut = statusCode === DisconnectReason.loggedOut;
-        handle.state = loggedOut ? "EXPIRED" : "DISCONNECTED";
+        // WhatsApp answers a restricted number with `forbidden`, while an ordinary
+        // unlink arrives as `loggedOut`. Only the former is reported as a
+        // restriction, so a routine disconnect is never mislabelled (RULES.md §8).
+        const restricted =
+          !loggedOut &&
+          statusCode !== undefined &&
+          (SHADOW_BAN_STATUS_CODES as readonly number[]).includes(statusCode);
+
+        handle.state = loggedOut
+          ? "EXPIRED"
+          : restricted
+            ? "ERROR"
+            : "DISCONNECTED";
         sockets.delete(deviceId);
 
-        if (loggedOut) {
+        if (loggedOut || restricted) {
           // The session is unrecoverable; wipe stored credentials.
           await clearAuthState(deviceId);
+        }
+
+        if (restricted) {
+          log.warn(
+            { event: "device.restricted", deviceId, statusCode },
+            "WhatsApp refused the session; credentials cleared",
+          );
         }
 
         await params.onUpdate?.({
@@ -357,10 +380,12 @@ async function openSocket(
           state: handle.state,
           ...(restartRequired
             ? { errorCode: "RESTART_EXHAUSTED" }
-            : statusCode
-              ? { errorCode: `DISCONNECT_${statusCode}` }
-              : {}),
-          requiresReauth: loggedOut,
+            : restricted
+              ? { errorCode: SHADOW_BAN_ERROR_CODE }
+              : statusCode
+                ? { errorCode: `DISCONNECT_${statusCode}` }
+                : {}),
+          requiresReauth: loggedOut || restricted,
         });
       }
     })();

@@ -116,6 +116,74 @@ describe("createCampaignSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("defaults the message type to TEXT", () => {
+    const result = createCampaignSchema.safeParse(base);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messageType).toBe("TEXT");
+    }
+  });
+
+  it("requires media for an image message", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      messageType: "IMAGE",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("mediaKey")),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts an image message that carries media", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      messageType: "IMAGE",
+      mediaKey: "campaign-media/2026-01-01/abc.png",
+      mediaMime: "image/png",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("requires a label and URL for a button message", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      messageType: "BUTTON",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("ctaLabel")),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts a button message that carries a complete CTA", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      messageType: "BUTTON",
+      ctaLabel: "Book now",
+      ctaUrl: "https://example.com/book",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown message type", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      messageType: "VIDEO",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("campaignTransitionSchema", () => {

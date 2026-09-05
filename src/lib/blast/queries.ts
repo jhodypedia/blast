@@ -195,7 +195,18 @@ export type DeviceBlastStatus = {
   lastErrorCode: string | null;
   /** Live job on this device, if any. */
   jobId: string | null;
-  jobStatus: string | null;
+  jobStatus:
+    | "PENDING"
+    | "QUEUED"
+    | "RUNNING"
+    | "PAUSED"
+    | "COMPLETED"
+    | "PARTIAL_FAILED"
+    | "CANCELLED"
+    | "FAILED"
+    | null;
+  /** Pause policy snapshotted on that job; false when there is no job. */
+  allowUserPause: boolean;
   quotaTotal: number;
   sent: number;
   failed: number;
@@ -224,7 +235,12 @@ export async function listDeviceBlastStatus(
       blastJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { id: true, status: true, quotaTotal: true },
+        select: {
+          id: true,
+          status: true,
+          quotaTotal: true,
+          snapshotAllowUserPause: true,
+        },
       },
     },
   });
@@ -242,6 +258,7 @@ export async function listDeviceBlastStatus(
         lastErrorCode: device.lastErrorCode,
         jobId: job?.id ?? null,
         jobStatus: job?.status ?? null,
+        allowUserPause: job?.snapshotAllowUserPause ?? false,
         quotaTotal: job?.quotaTotal ?? 0,
         sent: progress?.sent ?? 0,
         failed: progress?.failed ?? 0,
@@ -263,6 +280,10 @@ export type UserDeliveryLogRow = {
   status: string;
   event: string;
   detail: string | null;
+  /** Message shape actually sent, from the job's immutable snapshot. */
+  messageType: "TEXT" | "IMAGE" | "BUTTON";
+  /** Delay used by the job that produced this row, in seconds. */
+  speedSeconds: number;
 };
 
 /**
@@ -299,6 +320,11 @@ export async function listUserDeliveryLog(params: {
       event: true,
       detail: true,
       device: { select: { label: true, publicId: true } },
+      // The message shape and delay are read from the job snapshot rather than
+      // duplicated onto every log row.
+      blastJob: {
+        select: { snapshotMessageType: true, speedSeconds: true },
+      },
     },
   });
 
@@ -311,5 +337,7 @@ export async function listUserDeliveryLog(params: {
     status: row.status,
     event: row.event,
     detail: row.detail,
+    messageType: row.blastJob.snapshotMessageType,
+    speedSeconds: row.blastJob.speedSeconds,
   }));
 }

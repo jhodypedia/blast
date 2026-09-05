@@ -10,31 +10,31 @@ import {
 } from "@/app/actions/blast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  ConsentCheckbox,
+  SpeedPicker,
+  type BlastAllocation,
+} from "@/components/devices/blast-shared";
 
 const initialState: BlastActionState = { status: "idle" };
 
-export type BlastAllCampaign = {
-  id: string;
-  name: string;
-  allowedSpeeds: number[];
-  requireTermsAccept: boolean;
-};
-
 /**
- * Bulk start: one job per connected device.
+ * Bulk blast: one job per connected device of the caller.
  *
- * The device set is resolved from the session server-side, so this form only
- * carries a campaign and a speed from the server-provided allow lists
+ * The device set is resolved from the verified session server-side, so this form
+ * only carries an allocation id and a delay from the server-provided allow lists
  * (RULES.md §11, §13).
  */
-export function BlastAllForm({
-  campaigns,
+export function BlastAllPanel({
+  allocations,
   connectedCount,
+  maxDevices,
   disabled,
   disabledReason,
 }: {
-  campaigns: BlastAllCampaign[];
+  allocations: BlastAllocation[];
   connectedCount: number;
+  maxDevices: number;
   disabled?: boolean;
   disabledReason?: string;
 }) {
@@ -42,10 +42,10 @@ export function BlastAllForm({
     startBlastAllDevicesAction,
     initialState,
   );
-  const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? "");
-  const campaign =
-    campaigns.find((item) => item.id === campaignId) ?? campaigns[0];
-  const [speed, setSpeed] = useState(campaign?.allowedSpeeds[0] ?? 3);
+  const [campaignId, setCampaignId] = useState(allocations[0]?.id ?? "");
+  const allocation =
+    allocations.find((item) => item.id === campaignId) ?? allocations[0];
+  const [speed, setSpeed] = useState(allocation?.allowedSpeeds[0] ?? 3);
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
@@ -54,16 +54,15 @@ export function BlastAllForm({
     }
   }, [state]);
 
-  if (campaigns.length === 0) {
+  if (allocations.length === 0) {
     return (
       <p className="border-2 border-black bg-surface px-2 py-1 text-xs font-black uppercase text-foreground">
-        Belum ada campaign yang ditugaskan ke akun Anda.
+        Belum ada alokasi nomor untuk akun Anda. Hubungi admin.
       </p>
     );
   }
 
-  const speeds = campaign?.allowedSpeeds ?? [];
-  const requireTerms = campaign?.requireTermsAccept ?? false;
+  const requireTerms = allocation?.requireTermsAccept ?? false;
   const blocked =
     Boolean(disabled) || connectedCount === 0 || (requireTerms && !accepted);
 
@@ -83,71 +82,49 @@ export function BlastAllForm({
       ) : null}
 
       <div className="space-y-2">
-        <Label htmlFor="blast-all-campaign">Campaign</Label>
+        <Label htmlFor="blast-all-allocation">Alokasi nomor</Label>
         <select
-          id="blast-all-campaign"
+          id="blast-all-allocation"
           value={campaignId}
           onChange={(event) => {
             const next = event.target.value;
             setCampaignId(next);
-            const nextSpeeds =
-              campaigns.find((item) => item.id === next)?.allowedSpeeds ?? [];
-            setSpeed(nextSpeeds[0] ?? 3);
+            const nextAllocation = allocations.find(
+              (item) => item.id === next,
+            );
+            setSpeed(nextAllocation?.allowedSpeeds[0] ?? 3);
             setAccepted(false);
           }}
           disabled={pending || disabled}
           className="flex h-11 w-full border-4 border-black bg-background px-3 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
         >
-          {campaigns.map((item) => (
+          {allocations.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name}
+              {item.name} · {item.remaining} nomor tersisa
             </option>
           ))}
         </select>
       </div>
 
-      <fieldset className="space-y-2" disabled={pending || disabled}>
-        <legend className="text-xs font-black uppercase tracking-widest">
-          Kecepatan kirim
-        </legend>
-        <div className="flex flex-wrap gap-2">
-          {speeds.map((option) => (
-            <Button
-              key={option}
-              type="button"
-              size="sm"
-              variant={option === speed ? "default" : "outline"}
-              aria-pressed={option === speed}
-              onClick={() => setSpeed(option)}
-            >
-              {option}s
-            </Button>
-          ))}
-        </div>
-        <p className="text-xs font-bold uppercase text-foreground">
-          Satu pesan setiap {speed} detik per perangkat.
-        </p>
-      </fieldset>
+      <SpeedPicker
+        id="blast-all-speed"
+        speeds={allocation?.allowedSpeeds ?? []}
+        value={speed}
+        onChange={setSpeed}
+        disabled={pending || disabled}
+      />
 
       {requireTerms ? (
-        <label className="flex min-h-11 items-start gap-2 border-2 border-black bg-surface p-2 text-xs font-bold text-foreground">
-          <input
-            type="checkbox"
-            name="acceptedTerms"
-            checked={accepted}
-            onChange={(event) => setAccepted(event.target.checked)}
-            className="mt-0.5 size-4 border-2 border-black accent-primary"
-            disabled={pending || disabled}
-          />
-          <span>
-            Saya memastikan penerima sudah menyetujui menerima pesan ini.
-          </span>
-        </label>
+        <ConsentCheckbox
+          checked={accepted}
+          onChange={setAccepted}
+          disabled={pending || disabled}
+        />
       ) : null}
 
       <Button type="submit" loading={pending} disabled={blocked}>
         <Radio aria-hidden="true" />
-        Blast All Devices
+        Blast semua perangkat
       </Button>
 
       {connectedCount === 0 ? (
@@ -158,7 +135,11 @@ export function BlastAllForm({
         <p className="border-2 border-black bg-warning px-2 py-1 text-xs font-black uppercase text-warning-foreground">
           {disabledReason}
         </p>
-      ) : null}
+      ) : (
+        <p className="text-xs font-bold uppercase text-foreground">
+          {connectedCount} dari {maxDevices} perangkat terhubung akan mengirim.
+        </p>
+      )}
     </form>
   );
 }

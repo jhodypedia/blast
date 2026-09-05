@@ -84,6 +84,7 @@ export async function startBlastJob(
       select: {
         id: true,
         status: true,
+        messageType: true,
         messageText: true,
         mediaKey: true,
         mediaMime: true,
@@ -259,6 +260,7 @@ export async function startBlastJob(
           status: "QUEUED",
           submissionKey,
           snapshotContentVersion: campaign.contentVersion,
+          snapshotMessageType: campaign.messageType,
           snapshotMessageText: campaign.messageText,
           snapshotMediaKey: campaign.mediaKey,
           snapshotMediaMime: campaign.mediaMime,
@@ -366,6 +368,24 @@ export async function startBlastJobsForAllDevices(params: {
   acceptedTerms: boolean;
 }): Promise<StartBlastJobsForAllDevicesResult> {
   const log = logger("blast");
+
+  // The allocation's own device policy decides whether a fan-out is permitted at
+  // all. Without this check the per-device concurrency rule would still stop the
+  // second device, but with a confusing "already running" message instead of the
+  // real reason.
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: params.campaignId, archivedAt: null },
+    select: { deviceModePolicy: true },
+  });
+
+  if (!campaign) {
+    throw notFound("This allocation is no longer available.");
+  }
+  if (campaign.deviceModePolicy === "SINGLE_DEVICE") {
+    throw invalidState(
+      "This allocation allows one device at a time. Start the blast from a single device instead.",
+    );
+  }
 
   const devices = await prisma.device.findMany({
     where: { userId: params.userId, deletedAt: null, status: "CONNECTED" },

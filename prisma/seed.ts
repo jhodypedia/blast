@@ -27,7 +27,8 @@ const SETTING_DEFAULTS: Array<{ key: string; value: unknown }> = [
   { key: "auth.session_hours", value: 8 },
   { key: "platform.maintenance_mode", value: { enabled: false, message: "" } },
   { key: "blast.allowed_speeds", value: [1, 3, 6, 10] },
-  { key: "blast.max_active_jobs_per_user", value: 2 },
+  // Bulk blast opens one job per connected device, so this matches the device cap.
+  { key: "blast.max_active_jobs_per_user", value: 5 },
   { key: "blast.default_payout_per_send", value: "25" },
   { key: "blast.default_currency", value: "IDR" },
   { key: "retention.delivery_log_days", value: 30 },

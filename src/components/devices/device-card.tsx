@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import {
+  Activity,
   Check,
   Fingerprint,
   Link2Off,
@@ -21,7 +22,11 @@ import { SHADOW_BAN_ERROR_CODE } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { DevicePairingModal } from "@/components/devices/device-pairing-modal";
+import { DeviceBlastForm } from "@/components/devices/device-blast-form";
+import { JobControls } from "@/components/devices/job-controls";
+import type { BlastAllocation } from "@/components/devices/blast-shared";
 
 export type DeviceCardData = {
   id: string;
@@ -32,6 +37,27 @@ export type DeviceCardData = {
   maskedNumber: string | null;
   lastConnectedAt: string | null;
   lastErrorCode: string | null;
+};
+
+/** Authoritative per-device delivery counters from recipient rows. */
+export type DeviceBlastProgress = {
+  jobId: string | null;
+  jobStatus:
+    | "PENDING"
+    | "QUEUED"
+    | "RUNNING"
+    | "PAUSED"
+    | "COMPLETED"
+    | "PARTIAL_FAILED"
+    | "CANCELLED"
+    | "FAILED"
+    | null;
+  quotaTotal: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  percent: number;
+  allowUserPause: boolean;
 };
 
 const initialState: DeviceActionState = { status: "idle" };
@@ -56,17 +82,23 @@ const STATUS_LABEL: Record<DeviceCardData["status"], string> = {
 };
 
 /**
- * One device row with its pairing and lifecycle controls.
+ * One device row with its pairing, blast and lifecycle controls.
  *
  * The QR image and pairing code are never rendered from props: they arrive over
- * the authenticated status channel only (RULES.md §8).
+ * the authenticated status channel only (RULES.md §8). Blast progress comes from
+ * authoritative recipient counts passed in by the server, never from a local
+ * counter (RULES.md §13).
  */
 export function DeviceCard({
   device,
   pairCodeEnabled,
+  allocations,
+  progress,
 }: {
   device: DeviceCardData;
   pairCodeEnabled: boolean;
+  allocations: BlastAllocation[];
+  progress: DeviceBlastProgress;
 }) {
   const [controlState, controlAction, controlPending] = useActionState(
     deviceControlAction,
@@ -146,10 +178,86 @@ export function DeviceCard({
               Hubungkan perangkat
             </Button>
           ) : (
-            <div className="flex items-center gap-2 border-4 border-black bg-success px-3 py-2 text-xs font-black uppercase text-success-foreground">
-              <Check className="size-4" aria-hidden="true" /> Perangkat siap menjalankan blast
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-4 border-black bg-success px-3 py-2 text-xs font-black uppercase text-success-foreground">
+                <Check className="size-4" aria-hidden="true" /> Perangkat siap menjalankan blast
+              </div>
+
+              <DeviceBlastForm
+                deviceId={device.id}
+                allocations={allocations}
+                disabled={busy}
+              />
             </div>
           )}
+
+          {progress.jobStatus ? (
+            <div className="space-y-3 border-4 border-black bg-surface p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-foreground">
+                  <Activity className="size-3.5 text-primary" aria-hidden="true" />
+                  Status blast
+                </span>
+                <Badge
+                  variant={
+                    progress.jobStatus === "PAUSED"
+                      ? "warning"
+                      : progress.jobStatus === "FAILED"
+                        ? "danger"
+                        : progress.jobStatus === "COMPLETED"
+                          ? "success"
+                          : "info"
+                  }
+                >
+                  {progress.jobStatus}
+                </Badge>
+              </div>
+
+              <Progress
+                value={progress.percent}
+                tone={
+                  progress.jobStatus === "PAUSED"
+                    ? "warning"
+                    : progress.jobStatus === "FAILED"
+                      ? "danger"
+                      : progress.jobStatus === "COMPLETED"
+                        ? "success"
+                        : "primary"
+                }
+                aria-label={`Progres pengiriman ${device.label}`}
+              />
+
+              <dl className="grid grid-cols-3 gap-2 text-center">
+                <Counter
+                  label="Sukses"
+                  value={progress.sent}
+                  className="bg-success text-success-foreground"
+                />
+                <Counter
+                  label="Gagal"
+                  value={progress.failed}
+                  className="bg-destructive text-destructive-foreground"
+                />
+                <Counter
+                  label="Menunggu"
+                  value={progress.pending}
+                  className="bg-warning text-warning-foreground"
+                />
+              </dl>
+
+              <p className="text-xs font-bold uppercase text-foreground">
+                {progress.sent}/{progress.quotaTotal} terkirim · {progress.percent}%
+              </p>
+
+              {progress.jobId ? (
+                <JobControls
+                  blastJobId={progress.jobId}
+                  status={progress.jobStatus}
+                  allowUserPause={progress.allowUserPause}
+                />
+              ) : null}
+            </div>
+          ) : null}
 
           <DeviceControls
             deviceId={device.id}
@@ -165,6 +273,26 @@ export function DeviceCard({
       </Card>
       <DevicePairingModal deviceId={device.id} deviceName={device.label} pairCodeEnabled={pairCodeEnabled} open={pairingOpen} onClose={() => setPairingOpen(false)} />
     </motion.div>
+  );
+}
+
+/** Small delivery counter tile inside the per-device status panel. */
+function Counter({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: number;
+  className: string;
+}) {
+  return (
+    <div className={`border-2 border-black p-2 ${className}`}>
+      <dt className="text-[0.625rem] font-black uppercase tracking-widest">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-base font-black leading-none">{value}</dd>
+    </div>
   );
 }
 

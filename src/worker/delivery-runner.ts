@@ -56,6 +56,7 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       snapshotRetryLimit: true,
       snapshotPayoutPerSend: true,
       snapshotCurrency: true,
+      snapshotMessageType: true,
       snapshotMessageText: true,
       snapshotMediaKey: true,
       snapshotMediaMime: true,
@@ -105,10 +106,16 @@ async function evaluateGate(blastJobId: string): Promise<SendGate> {
       payoutPerSend: job.snapshotPayoutPerSend.toString(),
       currency: job.snapshotCurrency,
       messageText: job.snapshotMessageText,
-      ...(job.snapshotCtaLabel && job.snapshotCtaUrl
+      // The snapshotted message type decides which content the adapter sends, so
+      // leftover media on a TEXT row can never turn into an image message.
+      ...(job.snapshotMessageType === "BUTTON" &&
+      job.snapshotCtaLabel &&
+      job.snapshotCtaUrl
         ? { cta: { label: job.snapshotCtaLabel, url: job.snapshotCtaUrl } }
         : {}),
-      ...(job.snapshotMediaKey && job.snapshotMediaMime
+      ...(job.snapshotMessageType === "IMAGE" &&
+      job.snapshotMediaKey &&
+      job.snapshotMediaMime
         ? {
             media: {
               storagePath: job.snapshotMediaKey,
