@@ -12,6 +12,12 @@
  * specific channels by emitting "subscribe" / "unsubscribe" events.
  */
 
+// ── Bootstrap (order matters — must stay the first two imports) ─────────────
+// 1. Load .env so REDIS_URL/TZ below are defined.
+// 2. Set process.env.TZ (WIB) before ANY Date operation runs.
+import "dotenv/config";
+import "@/lib/timezone";
+
 import { createServer } from "node:http";
 import { parse } from "node:url";
 import next from "next";

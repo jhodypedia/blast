@@ -24,6 +24,7 @@ import { listCampaignsForAdmin } from "@/lib/admin/queries";
 import { listUsers } from "@/lib/admin/service";
 import { getSetting } from "@/lib/settings/service";
 import { ALLOWED_SPEED_SECONDS, SETTING_KEYS } from "@/lib/constants";
+import { toWIBDate, toWIBDateTimeInput } from "@/lib/date";
 import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -72,7 +73,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** `datetime-local` needs `YYYY-MM-DDTHH:mm` without the timezone suffix. */
 function toLocalInput(value: Date): string {
-  return value.toISOString().slice(0, 16);
+  return toWIBDateTimeInput(value);
 }
 
 /** Blank Baileys configuration for the "new allocation" form. */
@@ -370,7 +371,7 @@ export default async function AdminTargetListsPage() {
                         </p>
                         <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {list.originalFileName} ·{" "}
-                          {list.createdAt.toISOString().slice(0, 10)}
+                          {toWIBDate(list.createdAt)}
                         </p>
                       </div>
                       <Badge variant={STATUS_VARIANT[list.status] ?? "neutral"}>

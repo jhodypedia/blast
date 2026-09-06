@@ -253,7 +253,14 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
       return processed;
     }
 
+    const delayMs = context.speedSeconds * 1_000;
+
     for (const recipient of batch) {
+      // Track iteration start for precise pacing: the gap between the start
+      // of one send and the start of the next equals the chosen speed, not
+      // speed + processing overhead.
+      const iterationStart = Date.now();
+
       // Re-check the gate before each individual send (RULES.md §12).
       const perSendGate = await evaluateGate(blastJobId);
       if (!perSendGate.ok) {
@@ -346,8 +353,14 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
         clearInterval(heartbeat);
       }
 
-      // Server-enforced pacing between sends.
-      await sleep(context.speedSeconds * 1_000);
+      // Server-enforced pacing: sleep for the remaining time so the total
+      // interval between the start of consecutive sends equals the chosen
+      // speed. If processing already exceeded the delay, skip sleeping.
+      const elapsed = Date.now() - iterationStart;
+      const remaining = Math.max(0, delayMs - elapsed);
+      if (remaining > 0) {
+        await sleep(remaining);
+      }
     }
 
     // ── Realtime: publish progress after each batch ──────────────────────

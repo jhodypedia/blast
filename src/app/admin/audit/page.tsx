@@ -3,6 +3,7 @@ import { MessageSquareQuote, ScrollText, ShieldCheck } from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { listAuditLog } from "@/lib/admin/queries";
+import { toWIBDateTimeFull } from "@/lib/date";
 import { IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -68,11 +69,7 @@ export default async function AdminAuditPage() {
                         </p>
                         <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                           {entry.actorEmail ?? "system"} ·{" "}
-                          {entry.createdAt
-                            .toISOString()
-                            .slice(0, 19)
-                            .replace("T", " ")}{" "}
-                          UTC
+                          {toWIBDateTimeFull(entry.createdAt)} WIB
                         </p>
                         {entry.reason ? (
                           <p className="mt-1 flex items-start gap-1.5 truncate text-xs font-bold text-foreground">

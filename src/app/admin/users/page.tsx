@@ -3,6 +3,7 @@ import { CalendarClock, Send, Smartphone, UserCog, Users } from "lucide-react";
 
 import { requireAdmin } from "@/lib/auth/session";
 import { listUsers } from "@/lib/admin/service";
+import { toWIBDate } from "@/lib/date";
 import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -61,8 +62,7 @@ export default async function AdminUsersPage() {
                           {user.name || user.email}
                         </p>
                         <p className="mt-0.5 truncate text-xs font-bold text-foreground">
-                          {user.email} · joined{" "}
-                          {user.createdAt.toISOString().slice(0, 10)}
+                          {user.email} · joined {toWIBDate(user.createdAt)}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -98,7 +98,7 @@ export default async function AdminUsersPage() {
                         label="Last login"
                         value={
                           user.lastLoginAt
-                            ? user.lastLoginAt.toISOString().slice(0, 10)
+                            ? toWIBDate(user.lastLoginAt)
                             : "Never"
                         }
                         icon={

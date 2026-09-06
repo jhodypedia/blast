@@ -13,6 +13,7 @@ import {
 
 import { requireAdmin } from "@/lib/auth/session";
 import { listJobsForAdmin } from "@/lib/admin/job-queries";
+import { toWIBDateTimeShort } from "@/lib/date";
 import { Card, CardContent, IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -172,7 +173,7 @@ export default async function AdminJobsPage() {
                       />
                       <Metric
                         label="Started"
-                        value={job.createdAt.toISOString().slice(0, 16)}
+                        value={toWIBDateTimeShort(job.createdAt)}
                         icon={<CalendarClock className="size-3.5" />}
                       />
                     </dl>

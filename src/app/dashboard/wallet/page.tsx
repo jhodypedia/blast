@@ -17,6 +17,7 @@ import { getBalance } from "@/lib/ledger/service";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
+import { toWIBDate, toWIBDateTimeShort } from "@/lib/date";
 import { PAYOUT_PROVIDERS } from "@/lib/validation/wallet";
 import { Badge } from "@/components/ui/badge";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -195,7 +196,7 @@ export default async function WalletPage() {
                       </p>
                       <p className="mt-0.5 truncate text-xs font-bold text-foreground">
                         {row.providerName} · {row.accountMasked} ·{" "}
-                        {row.createdAt.toISOString().slice(0, 10)}
+                        {toWIBDate(row.createdAt)}
                       </p>
                       {row.rejectionReason ? (
                         <p className="mt-1.5 border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground">
@@ -240,11 +241,7 @@ export default async function WalletPage() {
                         {row.campaignName ?? "Campaign"}
                       </p>
                       <p className="mt-0.5 text-xs font-bold text-foreground">
-                        {row.createdAt
-                          .toISOString()
-                          .slice(0, 16)
-                          .replace("T", " ")}{" "}
-                        UTC
+                        {toWIBDateTimeShort(row.createdAt)} WIB
                       </p>
                     </div>
                     <span className="shrink-0 border-2 border-black bg-success px-2 py-1 text-sm font-black text-success-foreground">

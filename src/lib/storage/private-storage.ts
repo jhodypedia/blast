@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 
 import { serverEnv } from "@/lib/env";
 import { validationError } from "@/lib/errors";
+import { toWIBDate } from "@/lib/date";
 import {
   ACCEPTED_TARGET_EXTENSIONS,
   MAX_TARGET_FILE_BYTES,
@@ -82,7 +83,7 @@ export async function saveTargetUpload(params: {
     });
   }
 
-  const relativeDir = join("targets", new Date().toISOString().slice(0, 10));
+  const relativeDir = join("targets", toWIBDate(new Date()));
   const storageKey = join(relativeDir, `${randomUUID()}${extension}`);
   const absolutePath = resolveStoragePath(storageKey);
 
@@ -144,7 +145,7 @@ export async function saveCampaignMediaUpload(params: {
     });
   }
 
-  const relativeDir = join("campaign-media", new Date().toISOString().slice(0, 10));
+  const relativeDir = join("campaign-media", toWIBDate(new Date()));
   const storageKey = join(relativeDir, `${randomUUID()}${extension}`);
   const absolutePath = resolveStoragePath(storageKey);
   await mkdir(resolveStoragePath(relativeDir), { recursive: true });

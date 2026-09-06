@@ -1,4 +1,6 @@
 import "dotenv/config";
+// Set process.env.TZ (WIB) before ANY Date operation runs (must follow dotenv).
+import "@/lib/timezone";
 
 import { Worker, type Job } from "bullmq";
 

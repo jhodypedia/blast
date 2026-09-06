@@ -15,6 +15,7 @@ import {
   listWithdrawalsForAdmin,
 } from "@/lib/admin/queries";
 import { formatMoney } from "@/lib/money";
+import { toWIBDate } from "@/lib/date";
 import { IconTile } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -97,7 +98,7 @@ export default async function AdminWithdrawalsPage() {
                         </p>
                         <p className="mt-0.5 truncate text-xs font-bold text-warning-foreground">
                           New: {request.providerName} · {request.accountMasked} ·{" "}
-                          {request.createdAt.toISOString().slice(0, 10)}
+                          {toWIBDate(request.createdAt)}
                         </p>
                       </div>
                     </div>

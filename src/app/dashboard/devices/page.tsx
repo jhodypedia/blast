@@ -23,6 +23,7 @@ import {
 } from "@/lib/blast/queries";
 import { getSetting } from "@/lib/settings/service";
 import { SETTING_KEYS } from "@/lib/constants";
+import { toWIBDateTimeFull } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
@@ -276,10 +277,7 @@ export default async function DevicesPage() {
           <DeliveryLogTable
             rows={logs.map((row) => ({
               id: row.id,
-              createdAt: row.createdAt
-                .toISOString()
-                .slice(0, 19)
-                .replace("T", " "),
+              createdAt: toWIBDateTimeFull(row.createdAt),
               devicePublicId: row.devicePublicId,
               deviceLabel: row.deviceLabel,
               recipientRef: row.recipientRef,
