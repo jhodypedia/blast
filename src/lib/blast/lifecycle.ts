@@ -10,6 +10,7 @@ import {
 } from "@/lib/delivery/progress";
 import { logger } from "@/lib/observability/logger";
 import { recordAudit } from "@/lib/audit/service";
+import { publishBlastLifecycle } from "@/lib/realtime/event-bus";
 
 /**
  * Blast-job lifecycle transitions (RULES.md §11).
@@ -29,6 +30,7 @@ async function loadJob(blastJobId: string) {
     select: {
       id: true,
       userId: true,
+      deviceId: true,
       status: true,
       snapshotAllowUserPause: true,
       campaignId: true,
@@ -71,6 +73,14 @@ export async function pauseBlastJob(params: {
     { event: "blast.paused", blastJobId: job.id, actorRole: params.actorRole },
     "Blast job paused",
   );
+
+  await publishBlastLifecycle({
+    blastJobId: job.id,
+    userId: job.userId,
+    deviceId: job.deviceId,
+    action: "PAUSED",
+    newStatus: "PAUSED",
+  });
 }
 
 /** Resumes a paused job and re-enqueues delivery. */
@@ -110,6 +120,14 @@ export async function resumeBlastJob(params: {
   // Imported lazily to keep the queue producer out of read-only paths.
   const { enqueueBlastDelivery } = await import("@/lib/queue/queues");
   await enqueueBlastDelivery({ blastJobId: job.id });
+
+  await publishBlastLifecycle({
+    blastJobId: job.id,
+    userId: job.userId,
+    deviceId: job.deviceId,
+    action: "RESUMED",
+    newStatus: "QUEUED",
+  });
 }
 
 /**
@@ -168,6 +186,14 @@ export async function stopBlastJob(params: {
     { event: "blast.stopped", blastJobId: job.id, actorRole: params.actorRole },
     "Blast job stopped",
   );
+
+  await publishBlastLifecycle({
+    blastJobId: job.id,
+    userId: job.userId,
+    deviceId: job.deviceId,
+    action: "STOPPED",
+    newStatus: "CANCELLED",
+  });
 }
 
 /**
@@ -184,10 +210,25 @@ export async function finaliseIfComplete(
     return null;
   }
 
-  await prisma.blastJob.updateMany({
+  const job = await prisma.blastJob.findUnique({
+    where: { id: blastJobId },
+    select: { userId: true, deviceId: true, status: true },
+  });
+
+  const result = await prisma.blastJob.updateMany({
     where: { id: blastJobId, status: { in: ["QUEUED", "RUNNING"] } },
     data: { status: terminal, finishedAt: new Date() },
   });
+
+  if (result.count === 1 && job) {
+    await publishBlastLifecycle({
+      blastJobId,
+      userId: job.userId,
+      deviceId: job.deviceId,
+      action: terminal === "COMPLETED" ? "COMPLETED" : "FAILED",
+      newStatus: terminal,
+    });
+  }
 
   return terminal;
 }

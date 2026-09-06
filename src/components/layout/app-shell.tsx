@@ -187,7 +187,7 @@ export function AppShell({
   }, [open]);
 
   const isActive = (href: string): boolean => {
-    if (href === "/dashboard") return pathname === href;
+    if (href === "/dashboard" || href === "/admin") return pathname === href;
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 

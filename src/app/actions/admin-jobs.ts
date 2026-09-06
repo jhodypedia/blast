@@ -8,6 +8,7 @@ import { adminStopJobSchema } from "@/lib/validation/admin";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { isAppError, toAppError } from "@/lib/errors";
 import { logger } from "@/lib/observability/logger";
+import { publishAdminRefresh } from "@/lib/realtime/event-bus";
 
 /**
  * ADMIN blast-job actions.
@@ -72,6 +73,13 @@ export async function adminStopJobAction(
     });
 
     revalidatePath("/admin/jobs");
+
+    await publishAdminRefresh({
+      resource: "jobs",
+      action: "updated",
+      resourceId: parsed.data.blastJobId,
+    });
+
     return { status: "success", message: "Job stopped." };
   } catch (error) {
     return toState(error);

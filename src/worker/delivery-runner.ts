@@ -21,6 +21,7 @@ import {
 } from "@/lib/delivery/record-result";
 import { finaliseIfComplete } from "@/lib/blast/lifecycle";
 import { RECIPIENT_HEARTBEAT_MS } from "@/lib/constants";
+import { publishBlastProgress } from "@/lib/realtime/event-bus";
 
 /**
  * Delivery loop (RULES.md §12, §13).
@@ -347,6 +348,37 @@ export async function runBlastJob(blastJobId: string): Promise<number> {
 
       // Server-enforced pacing between sends.
       await sleep(context.speedSeconds * 1_000);
+    }
+
+    // ── Realtime: publish progress after each batch ──────────────────────
+    try {
+      const { blastJobProgress, completionPercent } = await import(
+        "@/lib/delivery/progress"
+      );
+      const counts = await blastJobProgress(blastJobId);
+      const percent = completionPercent(counts);
+
+      // Get the current status from the DB
+      const currentJob = await prisma.blastJob.findUnique({
+        where: { id: blastJobId },
+        select: { status: true, userId: true, deviceId: true, quotaTotal: true },
+      });
+
+      if (currentJob) {
+        await publishBlastProgress({
+          blastJobId,
+          userId: currentJob.userId,
+          deviceId: currentJob.deviceId,
+          status: currentJob.status,
+          sent: counts.sent,
+          failed: counts.failed,
+          pending: counts.pending,
+          quotaTotal: currentJob.quotaTotal,
+          percent,
+        });
+      }
+    } catch {
+      // Progress publishing is best-effort; never fail the delivery loop.
     }
   }
 }

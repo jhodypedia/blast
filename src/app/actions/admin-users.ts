@@ -9,6 +9,7 @@ import { updateSettingSchema, userActionSchema } from "@/lib/validation/admin";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { isAppError, toAppError } from "@/lib/errors";
 import { logger } from "@/lib/observability/logger";
+import { publishAdminRefresh } from "@/lib/realtime/event-bus";
 
 /**
  * ADMIN user and settings actions.
@@ -94,6 +95,13 @@ export async function userAction(
 
     revalidatePath("/admin/users");
     revalidatePath(`/admin/users/${parsed.data.userId}`);
+
+    await publishAdminRefresh({
+      resource: "users",
+      action: "updated",
+      resourceId: parsed.data.userId,
+    });
+
     return { status: "success", message: "Account updated." };
   } catch (error) {
     return toState(error);

@@ -17,6 +17,7 @@ import { enqueueDeviceSession } from "@/lib/queue/queues";
 import type { DeviceSessionJobData } from "@/lib/queue/queues";
 import { recordAudit } from "@/lib/audit/service";
 import { logger } from "@/lib/observability/logger";
+import { publishDeviceStatus } from "@/lib/realtime/event-bus";
 import {
   claimPairing,
   clearDeviceChallenge,
@@ -238,6 +239,12 @@ export async function disconnectDevice(params: {
     where: { id: device.id },
     data: { status: "DISCONNECTED" },
   });
+
+  await publishDeviceStatus({
+    deviceId: device.id,
+    userId: params.userId,
+    status: "DISCONNECTED",
+  });
 }
 
 /** Soft-deletes a device and clears its stored credentials. */
@@ -275,6 +282,13 @@ export async function removeDevice(params: {
     { event: "device.removed", deviceId: device.id },
     "Device removed by owner",
   );
+
+  await publishDeviceStatus({
+    deviceId: device.id,
+    userId: params.userId,
+    status: "DISCONNECTED",
+    lastErrorCode: "REMOVED",
+  });
 }
 
 /** ADMIN force-disconnect with audit trail. */

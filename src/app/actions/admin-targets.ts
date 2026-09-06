@@ -15,6 +15,7 @@ import {
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { isAppError, toAppError, validationError } from "@/lib/errors";
 import { logger } from "@/lib/observability/logger";
+import { publishAdminRefresh } from "@/lib/realtime/event-bus";
 
 /**
  * ADMIN target-list actions.
@@ -107,6 +108,13 @@ export async function uploadTargetListAction(
     });
 
     revalidatePath("/admin/target-lists");
+
+    await publishAdminRefresh({
+      resource: "targets",
+      action: "created",
+      resourceId: result.targetListId,
+    });
+
     return {
       status: "success",
       message: "Upload accepted. The import is running in the background.",
@@ -146,6 +154,13 @@ export async function archiveTargetListAction(
     });
 
     revalidatePath("/admin/target-lists");
+
+    await publishAdminRefresh({
+      resource: "targets",
+      action: "deleted",
+      resourceId: parsed.data.targetListId,
+    });
+
     return { status: "success", message: "Target list archived." };
   } catch (error) {
     return toState(error);

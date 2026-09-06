@@ -84,6 +84,7 @@ export type LogScope =
   | "ledger"
   | "withdrawal"
   | "settings"
+  | "realtime"
   | "cleanup";
 
 /** Returns a child logger bound to an operational scope. */

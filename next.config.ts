@@ -13,7 +13,7 @@ const CSP_DIRECTIVES = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' https://challenges.cloudflare.com",
+  "connect-src 'self' ws: wss: https://challenges.cloudflare.com",
   "frame-src https://challenges.cloudflare.com",
   "frame-ancestors 'none'",
   "object-src 'none'",
@@ -32,6 +32,7 @@ const nextConfig: NextConfig = {
     "bullmq",
     "ioredis",
     "pino",
+    "socket.io",
   ],
 
   async headers() {

@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --import tsx server.ts",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "node --import tsx server.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

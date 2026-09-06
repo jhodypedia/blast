@@ -17,6 +17,7 @@ import {
   renewPairing,
   storeDeviceChallenge,
 } from "@/lib/device/challenge-store";
+import { publishDeviceStatus } from "@/lib/realtime/event-bus";
 
 /**
  * Device session processor.
@@ -254,6 +255,23 @@ export async function processDeviceSession(
           },
           "Device connection state updated",
         );
+
+        // Best-effort realtime publish; never block the device loop.
+        try {
+          await publishDeviceStatus({
+            deviceId: device.id,
+            userId: device.userId,
+            status: update.state,
+            ...(update.normalizedNumber
+              ? { maskedNumber: update.normalizedNumber }
+              : {}),
+            ...(update.errorCode
+              ? { lastErrorCode: update.errorCode }
+              : {}),
+          });
+        } catch {
+          // Realtime is best-effort; device session must not be affected.
+        }
       },
     });
   } catch (error) {

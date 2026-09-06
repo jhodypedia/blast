@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { CheckCircle2, CircleAlert, Info, TriangleAlert } from "lucide-react";
+import { RealtimeProvider } from "@/components/providers/realtime-provider";
 
 /**
  * Client providers.
@@ -40,7 +41,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       disableTransitionOnChange
     >
       <QueryClientProvider client={queryClient}>
-        {children}
+        <RealtimeProvider>{children}</RealtimeProvider>
         <Toaster
           position="top-right"
           closeButton

@@ -13,6 +13,7 @@ import { reviewWalletChangeSchema } from "@/lib/validation/admin";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { isAppError, toAppError, validationError } from "@/lib/errors";
 import { logger } from "@/lib/observability/logger";
+import { publishAdminRefresh } from "@/lib/realtime/event-bus";
 
 /**
  * ADMIN money actions: withdrawal review, wallet-change review and manual
@@ -102,6 +103,13 @@ export async function reviewWithdrawalAction(
     });
 
     revalidatePath("/admin/withdrawals");
+
+    await publishAdminRefresh({
+      resource: "withdrawals",
+      action: "updated",
+      resourceId: parsed.data.withdrawalId,
+    });
+
     return { status: "success", message: "Withdrawal updated." };
   } catch (error) {
     return toState(error);
@@ -138,6 +146,13 @@ export async function reviewWalletChangeAction(
     });
 
     revalidatePath("/admin/wallet-requests");
+
+    await publishAdminRefresh({
+      resource: "users",
+      action: "updated",
+      resourceId: parsed.data.changeRequestId,
+    });
+
     return { status: "success", message: "Wallet change request decided." };
   } catch (error) {
     return toState(error);
@@ -177,6 +192,13 @@ export async function adjustBalanceAction(
 
     revalidatePath("/admin/users");
     revalidatePath(`/admin/users/${parsed.data.userId}`);
+
+    await publishAdminRefresh({
+      resource: "users",
+      action: "updated",
+      resourceId: parsed.data.userId,
+    });
+
     return { status: "success", message: "Balance adjusted." };
   } catch (error) {
     return toState(error);
