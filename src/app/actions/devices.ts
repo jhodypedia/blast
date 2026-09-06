@@ -177,6 +177,10 @@ export async function deviceControlAction(
         });
         break;
       case "RECONNECT":
+        await disconnectDevice({
+          userId: actor.id,
+          deviceId: parsed.data.deviceId,
+        });
         await requestPairing({
           userId: actor.id,
           deviceId: parsed.data.deviceId,

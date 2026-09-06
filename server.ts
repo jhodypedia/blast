@@ -16,7 +16,7 @@
 // 1. Load .env so REDIS_URL/TZ below are defined.
 // 2. Set process.env.TZ (WIB) before ANY Date operation runs.
 import "dotenv/config";
-import "@/lib/timezone";
+import "./src/lib/timezone";
 
 import { createServer } from "node:http";
 import { parse } from "node:url";
@@ -52,6 +52,14 @@ function createRedisClient(label: string): Redis {
     console.log(`[realtime] Redis ${label} connected`);
   });
 
+  client.on("close", () => {
+    console.log(`[realtime] Redis ${label} connection closed`);
+  });
+
+  client.on("reconnecting", (delay: number) => {
+    console.log(`[realtime] Redis ${label} reconnecting in ${delay}ms`);
+  });
+
   return client;
 }
 
@@ -85,15 +93,6 @@ app.prepare().then(() => {
   const redisPub = createRedisClient("publisher");
 
   // Subscribe to all realtime channels using a pattern
-  redisSub.psubscribe("realtime:*", (err, count) => {
-    if (err) {
-      console.error("[realtime] Redis psubscribe error:", err.message);
-    } else {
-      console.log(`[realtime] Subscribed to ${count} Redis channel(s)`);
-    }
-  });
-
-  // Forward Redis messages to Socket.IO clients
   redisSub.on("pmessage", (_pattern: string, redisChannel: string, message: string) => {
     try {
       const event = JSON.parse(message) as { type?: string };
@@ -108,30 +107,45 @@ app.prepare().then(() => {
       // channel so the RealtimeProvider can catch everything.
       io.to(channel).emit(channel, event);
       io.emit("__broadcast__", event);
-    } catch {
-      // Malformed messages are silently dropped.
+    } catch (error) {
+      console.error("[realtime] Failed to process Redis message:", error instanceof Error ? error.message : String(error));
     }
+  });
+
+  // Subscribe after the listener is registered
+  redisSub.psubscribe("realtime:*").then((count) => {
+    console.log(`[realtime] Subscribed to ${count} Redis channel(s)`);
+  }).catch((err) => {
+    console.error("[realtime] Redis psubscribe error:", err.message);
   });
 
   // ── Socket.IO connection handling ──────────────────────────────────────
 
   io.on("connection", (socket) => {
-    console.log(`[realtime] Client connected: ${socket.id}`);
+    console.log(`[realtime] Client connected: ${socket.id} from ${socket.handshake.address}`);
 
     socket.on("subscribe", (channel: string) => {
       if (typeof channel === "string" && channel.length > 0 && channel.length <= 128) {
         void socket.join(channel);
+        console.log(`[realtime] Client ${socket.id} subscribed to channel: ${channel}`);
+      } else {
+        console.warn(`[realtime] Client ${socket.id} attempted to subscribe to invalid channel`);
       }
     });
 
     socket.on("unsubscribe", (channel: string) => {
       if (typeof channel === "string" && channel.length > 0) {
         void socket.leave(channel);
+        console.log(`[realtime] Client ${socket.id} unsubscribed from channel: ${channel}`);
       }
     });
 
     socket.on("disconnect", (reason: string) => {
       console.log(`[realtime] Client disconnected: ${socket.id} (${reason})`);
+    });
+
+    socket.on("error", (error: Error) => {
+      console.error(`[realtime] Client ${socket.id} error:`, error.message);
     });
   });
 
@@ -148,13 +162,35 @@ app.prepare().then(() => {
 
   const shutdown = async (signal: string) => {
     console.log(`\n[realtime] ${signal} received, shutting down...`);
+    
+    // 1. Stop accepting new connections
     io.close();
-    redisSub.disconnect();
-    redisPub.disconnect();
-    server.close();
-    process.exit(0);
+    
+    // 2. Close Redis connections
+    await redisSub.quit();
+    await redisPub.quit();
+    
+    // 3. Close HTTP server
+    server.close(() => {
+      console.log("[realtime] HTTP server closed");
+      process.exit(0);
+    });
+    
+    // Force exit after timeout if server doesn't close gracefully
+    setTimeout(() => {
+      console.error("[realtime] Forced exit after graceful shutdown timeout");
+      process.exit(1);
+    }, 10_000);
   };
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("uncaughtException", (error) => {
+    console.error("[realtime] Uncaught exception:", error.message);
+    void shutdown("UNCAUGHT_EXCEPTION");
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[realtime] Unhandled rejection:", reason);
+    void shutdown("UNHANDLED_REJECTION");
+  });
 });

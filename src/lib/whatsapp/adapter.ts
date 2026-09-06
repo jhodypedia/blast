@@ -165,6 +165,17 @@ async function openSocket(
 
   const handle: SocketHandle = { socket, state: "CONNECTING", disposed: false };
   sockets.set(deviceId, handle);
+  
+ log.info(
+  {
+    event: "device.connect.starting",
+    deviceId,
+    hasPairing: !!params.pairing,
+    pairingMethod: params.pairing?.method ?? "unknown",
+  },
+  "Starting device connection",
+);
+
 
   // Credential writes are serialised instead of fire-and-forget: the post-pair
   // restart has to observe the credentials issued moments earlier, otherwise it
@@ -193,6 +204,10 @@ async function openSocket(
       // A newer generation already owns this device: ignore the dead socket's
       // trailing events so they cannot overwrite the live state.
       if (sockets.get(deviceId) !== handle) {
+        log.info(
+          { event: "device.connection.update.stale", deviceId },
+          "Ignoring stale connection update from older socket generation",
+        );
         return;
       }
 
@@ -203,15 +218,34 @@ async function openSocket(
         isNewLogin?: boolean;
       };
 
+      log.info(
+        { 
+          event: "device.connection.update.received", 
+          deviceId,
+          connection,
+          hasQr: !!qr,
+          isNewLogin,
+        },
+        "Connection update received",
+      );
+
       // QR refs are pushed by WhatsApp for every unregistered handshake, pair
       // code flows included. Surfacing one there would replace the code the user
       // is waiting for, so a QR is only forwarded when it is what is expected.
       if (qr && (!params.pairing || params.pairing.method === "QR")) {
+        log.info(
+          { event: "device.qr.received", deviceId },
+          "Received QR code from WhatsApp",
+        );
         await params.onChallenge?.({
           method: "QR",
           qr,
           expiresAt: new Date(Date.now() + QR_TTL_MS),
         });
+        log.info(
+          { event: "device.challenge.stored", deviceId, method: "QR" },
+          "QR challenge stored in Redis",
+        );
       }
 
       if (isNewLogin) {
@@ -227,57 +261,79 @@ async function openSocket(
       }
 
       // The link-code request is a binary node, so it can only be sent once the
-      // Noise handshake is established. `connection: "connecting"` is emitted a
-      // tick after the socket is constructed — before the WebSocket is even
-      // open — so requesting there always failed. The pairing refs WhatsApp
-      // pushes for an unregistered handshake are the first proof the transport
-      // is usable, so they gate the request instead.
-      if (
+      // Noise handshake is established. For PAIR_CODE method, we request as soon
+      // as WhatsApp pushes pairing refs (QR or initial connection event), not
+      // dependent on QR availability being displayed to users.
+      // Hold the pairing request in a local const so TypeScript keeps the
+      // PAIR_CODE narrowing through the logging and the request call below.
+      const pairingRequest = params.pairing;
+      const pairCodeReady =
         !pairCodeRequested &&
-        params.pairing?.method === "PAIR_CODE" &&
-        qr &&
+        pairingRequest?.method === "PAIR_CODE" &&
         restartAttempt === 0 &&
-        !credsLinked
-      ) {
-        pairCodeRequested = true;
-        try {
-          const pairCode = await socket.requestPairingCode(
-            params.pairing.normalizedNumber,
-            params.pairing.customCode,
-          );
-          await params.onChallenge?.({
-            method: "PAIR_CODE",
-            pairCode: String(pairCode),
-            expiresAt: new Date(Date.now() + PAIR_CODE_TTL_MS),
-          });
-        } catch (error) {
-          log.warn(
-            { event: "device.pair_code_failed", deviceId },
-            `Pair code request failed: ${
-              error instanceof Error ? error.name : "unknown"
-            }`,
-          );
+        !credsLinked &&
+        (qr || connection === "open");
 
-          // The request identifies the session before it leaves, so a failure
-          // leaves credentials that log in as an unregistered companion and get
-          // rejected by WhatsApp. Tear the attempt down completely.
-          handle.state = "ERROR";
-          handle.disposed = true;
-          sockets.delete(deviceId);
+      log.info(
+        {
+          event: "device.pair_code.condition_check",
+          deviceId,
+          pairCodeReady,
+          pairCodeRequested,
+          hasPairingMethod: !!pairingRequest,
+          pairingMethod: pairingRequest?.method,
+          restartAttempt,
+          credsLinked,
+          qrAvailable: !!qr,
+          connectionState: connection,
+        },
+        "Pair code ready check result",
+      );
+
+      if (pairCodeReady) {
+        // Explicit type guard for PAIR_CODE variant
+        if (pairingRequest && pairingRequest.method === "PAIR_CODE") {
           try {
-            socket.end(undefined);
-          } catch {
-            // Closing an already-dead socket is not an error.
-          }
-          await credsWrite;
-          await clearAuthState(deviceId);
+            const pairCode = await socket.requestPairingCode(
+              pairingRequest.normalizedNumber,
+              pairingRequest.customCode,
+            );
+            log.info(
+              { event: "device.pair_code.success", deviceId, pairCode },
+              "Pairing code generated successfully",
+            );
+            await params.onChallenge?.({
+              method: "PAIR_CODE",
+              pairCode: String(pairCode),
+              expiresAt: new Date(Date.now() + PAIR_CODE_TTL_MS),
+            });
+          } catch (error) {
+            log.warn(
+              { event: "device.pair_code.failed", deviceId, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
+              `Pair code request failed`,
+            );
 
-          await params.onUpdate?.({
-            deviceId,
-            state: "ERROR",
-            errorCode: "PAIR_CODE_FAILED",
-          });
-          return;
+            // The request identifies the session before it leaves, so a failure
+            // leaves credentials that log in as an unregistered companion and get
+            // rejected by WhatsApp. Tear the attempt down completely.
+            handle.state = "ERROR";
+            handle.disposed = true;
+            sockets.delete(deviceId);
+            try {
+              socket.end(undefined);
+            } catch {
+              // Closing an already-dead socket is not an error.
+            }
+            await credsWrite;
+            await clearAuthState(deviceId);
+
+            await params.onUpdate?.({
+              deviceId,
+              state: "ERROR",
+              errorCode: "PAIR_CODE_FAILED",
+            });
+            return;
+          }
         }
       }
 

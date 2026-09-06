@@ -159,11 +159,24 @@ export async function processDeviceSession(
   }
 
   try {
+    log.info(
+      { event: "device.session.start", deviceId: device.id, action: data.action, pairingMethod: data.pairing?.method },
+      "Starting device session",
+    );
+    
     await whatsappAdapter.connect({
       deviceId: device.id,
       ...(data.pairing ? { pairing: data.pairing } : {}),
       onChallenge: async (challenge) => {
+        log.info(
+          { event: "device.challenge.received", deviceId: device.id, method: challenge.method },
+          "Received pairing challenge",
+        );
         await storeDeviceChallenge(device.id, challenge);
+        log.info(
+          { event: "device.challenge.stored", deviceId: device.id, method: challenge.method },
+          "Challenge stored in Redis",
+        );
       },
       onUpdate: async (update) => {
         // WhatsApp only reveals the paired number once the socket opens, so the
