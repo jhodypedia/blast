@@ -228,6 +228,16 @@ export async function finaliseIfComplete(
       action: terminal === "COMPLETED" ? "COMPLETED" : "FAILED",
       newStatus: terminal,
     });
+
+    // Auto-clean allocation records when every recipient succeeded.
+    // CampaignRecipient rows act as per-user allocation slots; deleting them on
+    // full success frees the allocated numbers back so the user can blast again
+    // without waiting for admin intervention (RULES.md §9).
+    if (terminal === "COMPLETED") {
+      await prisma.campaignRecipient.deleteMany({
+        where: { blastJobId },
+      });
+    }
   }
 
   return terminal;

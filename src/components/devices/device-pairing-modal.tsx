@@ -16,16 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const initialState: DeviceActionState = { status: "idle" };
-const COUNTRIES = [
-  ["ID", "Indonesia (+62)"],
-  ["MY", "Malaysia (+60)"],
-  ["SG", "Singapura (+65)"],
-  ["US", "Amerika Serikat (+1)"],
-  ["GB", "Britania Raya (+44)"],
-  ["AU", "Australia (+61)"],
-  ["IN", "India (+91)"],
-  ["JP", "Jepang (+81)"],
-] as const;
 
 type StatusPayload = {
   device: {
@@ -72,7 +62,6 @@ export function DevicePairingModal({
   const defaultMethod: "QR" | "PAIR_CODE" =
     pairCodeEnabled === false ? "QR" : "PAIR_CODE";
   const [method, setMethod] = useState<"QR" | "PAIR_CODE">(defaultMethod);
-  const [countryCode, setCountryCode] = useState("ID");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [payload, setPayload] = useState<StatusPayload | null>(null);
   const [now, setNow] = useState(0);
@@ -90,6 +79,7 @@ export function DevicePairingModal({
   // One auto QR session per modal opening. Reset only when the modal closes or
   // the operator asks for a refresh explicitly.
   const qrRequestedRef = useRef(false);
+  const qrFormRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -153,11 +143,11 @@ export function DevicePairingModal({
   const requestQrSession = useCallback(() => {
     if (qrRequestedRef.current) return;
     qrRequestedRef.current = true;
-    const formData = new FormData();
-    formData.set("deviceId", deviceId);
-    formData.set("method", "QR");
-    pairAction(formData);
-  }, [deviceId, pairAction]);
+    // Submit the hidden form so the server action runs through the proper
+    // React form-action lifecycle (instead of calling the action directly,
+    // which breaks because the return value is not a valid React child).
+    qrFormRef.current?.requestSubmit();
+  }, []);
 
   // Selecting the QR tab creates the session on its own: the operator never has
   // to press a button or type a number first. Deferred to a task so the action
@@ -214,9 +204,9 @@ export function DevicePairingModal({
 
   function validatePhone() {
     if (method !== "PAIR_CODE") return true;
-    const parsed = parsePhoneNumberFromString(phoneNumber, countryCode as never);
+    const parsed = parsePhoneNumberFromString(phoneNumber);
     const valid = Boolean(parsed?.isValid());
-    setValidationError(valid ? null : "Masukkan nomor WhatsApp yang valid.");
+    setValidationError(valid ? null : "Masukkan nomor WhatsApp yang valid (contoh: +6281234567890).");
     return valid;
   }
 
@@ -260,6 +250,13 @@ export function DevicePairingModal({
           ))}
         </div>
 
+        {/* Hidden QR form — submitted programmatically by requestQrSession so
+            the server action runs through the proper React form-action lifecycle. */}
+        <form ref={qrFormRef} action={pairAction} className="hidden">
+          <input type="hidden" name="deviceId" value={deviceId} />
+          <input type="hidden" name="method" value="QR" />
+        </form>
+
         {method === "PAIR_CODE" ? (
           <form
             action={pairAction}
@@ -270,27 +267,22 @@ export function DevicePairingModal({
           >
             <input type="hidden" name="deviceId" value={deviceId} />
             <input type="hidden" name="method" value="PAIR_CODE" />
-            <input type="hidden" name="countryCode" value={countryCode} />
-            <Label htmlFor={`pair-phone-${deviceId}`}>Nomor WhatsApp</Label>
-            <div className="grid grid-cols-[minmax(0,10rem)_1fr] gap-2">
-              <select
-                value={countryCode}
-                onChange={(event) => setCountryCode(event.target.value)}
-                aria-label="Kode negara"
-                className="flex h-11 w-full border-4 border-black bg-background px-2 font-mono text-sm font-bold uppercase disabled:bg-surface-strong"
-              >
-                {COUNTRIES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-              </select>
+            <Label htmlFor={`pair-phone-${deviceId}`}>Nomor WhatsApp lengkap</Label>
+            <div className="space-y-2">
               <Input
                 id={`pair-phone-${deviceId}`}
                 name="phoneNumber"
                 value={phoneNumber}
                 onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="81234567890"
+                placeholder="+6281234567890"
                 inputMode="tel"
                 autoComplete="tel"
                 aria-invalid={Boolean(validationError)}
+                className="w-full"
               />
+              <p className="text-xs text-muted-foreground">
+                Masukkan nomor lengkap dengan kode negara, contoh: +6281234567890, +14155552671, +447911123456
+              </p>
             </div>
             {validationError ? (
               <p className="border-2 border-black bg-destructive px-2 py-1 text-xs font-black uppercase text-destructive-foreground">
@@ -354,10 +346,7 @@ export function DevicePairingModal({
                 <input type="hidden" name="deviceId" value={deviceId} />
                 <input type="hidden" name="method" value={method} />
                 {method === "PAIR_CODE" ? (
-                  <>
-                    <input type="hidden" name="phoneNumber" value={phoneNumber} />
-                    <input type="hidden" name="countryCode" value={countryCode} />
-                  </>
+                  <input type="hidden" name="phoneNumber" value={phoneNumber} />
                 ) : null}
                 <Button type="submit" variant="outline" size="sm" loading={pairPending}>
                   <RefreshCw /> Coba lagi

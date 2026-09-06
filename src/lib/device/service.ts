@@ -150,7 +150,6 @@ export async function requestPairing(params: {
   deviceId: string;
   method: "QR" | "PAIR_CODE";
   phoneNumber?: string;
-  countryCode?: string;
 }): Promise<void> {
   const device = await loadOwnedDevice(params.deviceId, params.userId);
 
@@ -181,7 +180,7 @@ export async function requestPairing(params: {
   if (params.method === "PAIR_CODE") {
     const normalised = normalizePhoneNumber(
       params.phoneNumber ?? "",
-      params.countryCode ?? defaultCountry,
+      defaultCountry,
     );
     if (!normalised.ok) {
       throw validationError("Enter a valid WhatsApp number.", {

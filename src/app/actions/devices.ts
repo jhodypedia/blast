@@ -112,7 +112,6 @@ export async function pairDeviceAction(
       deviceId: formData.get("deviceId"),
       method: formData.get("method"),
       phoneNumber: formData.get("phoneNumber") ?? undefined,
-      countryCode: formData.get("countryCode") ?? undefined,
     });
 
     if (!parsed.success) {
@@ -137,9 +136,6 @@ export async function pairDeviceAction(
       method: parsed.data.method,
       ...(parsed.data.phoneNumber
         ? { phoneNumber: parsed.data.phoneNumber }
-        : {}),
-      ...(parsed.data.countryCode
-        ? { countryCode: parsed.data.countryCode }
         : {}),
     });
 

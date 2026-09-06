@@ -25,7 +25,6 @@ export const pairDeviceSchema = z
     deviceId: cuidSchema,
     method: z.enum(["QR", "PAIR_CODE"]),
     phoneNumber: optionalTrimmedString(24),
-    countryCode: z.string().trim().regex(/^[A-Z]{2}$/).optional(),
     customCode: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().trim().regex(/^[A-Za-z0-9]{8}$/).optional(),
