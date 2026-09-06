@@ -103,6 +103,36 @@ describe("createCampaignSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("treats an empty CTA URL as absent (the form submits \"\" for an unfilled input)", () => {
+    // Regression: the new-allocation form seeds ctaUrl: "" and FormData returns
+    // "" for an unfilled input. `.optional()` only accepts `undefined`, so an
+    // empty string used to fail `.url()` and block every CTA-less RICH campaign.
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      ctaUrl: "",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ctaUrl).toBeUndefined();
+    }
+  });
+
+  it("still rejects a CTA label when the URL is an empty string", () => {
+    const result = createCampaignSchema.safeParse({
+      ...base,
+      ctaLabel: "Book now",
+      ctaUrl: "",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path.includes("ctaUrl")),
+      ).toBe(true);
+    }
+  });
+
   it("rejects a payout with more than four decimal places", () => {
     const result = createCampaignSchema.safeParse({
       ...base,
@@ -353,7 +383,9 @@ describe("normalizeCampaignContent", () => {
   });
 
   it("ignores an incomplete legacy CTA", () => {
-    const normalized = normalizeCampaignContent({ ctaLabel: "Book now" });
+    const normalized = normalizeCampaignContent<Record<string, unknown>>({
+      ctaLabel: "Book now",
+    });
 
     expect(normalized.buttons).toBeUndefined();
   });

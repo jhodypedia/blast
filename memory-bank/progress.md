@@ -1,6 +1,6 @@
 # Project Memory — WhatsApp Blast SaaS
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Purpose
 
@@ -28,7 +28,7 @@ unexercised against a real device.
 | --- | --- | --- |
 | Lint | `npm run lint` (`eslint`) | exit 0 |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0 |
-| Unit tests | `npm test` (`vitest run`) | **re-run 2026-09-05: 23 files / 249 tests, all passed, 43.7s** |
+| Unit tests | `npm test` (`vitest run`) | **re-run 2026-09-06: 24 files / 282 tests, all passed, 51.3s** |
 | Integration tests | `npm run test:integration` | last green 2026-09-02 (12 tests, live MariaDB 11.4 on 3307); **not re-run since**, no supported server available |
 | Build | `npm run build` | exit 0 |
 
@@ -48,6 +48,47 @@ Two build-tooling notes for this machine, both cost time:
   `Failed to type check` with `TS1434`/`TS1109`/`TS1160` inside that generated
   file. The source was fine; a single clean rebuild passed. Treat syntax errors
   reported *inside `.next/`* as a stale-artifact symptom, not a code defect.
+
+## Campaign `ctaUrl` empty-string validation fix (2026-09-06)
+
+### Problem
+
+The new-allocation form seeds `ctaUrl: ""`, and `FormData` returns `""` for an
+unfilled input. The campaign schema used
+`z.string().trim().url("Enter a valid URL").max(2048).optional()` for `ctaUrl`,
+but Zod's `.optional()` only accepts `undefined`, not `""`. Any RICH campaign
+created without a CTA therefore failed schema validation with
+"Enter a valid URL" on `ctaUrl`.
+
+### Fix
+
+Applied the same `z.preprocess` pattern already used for `customCode` in
+`device.ts`: empty strings are normalised to `undefined` before the `.url()`
+check. The change is in `src/lib/validation/campaign.ts` and is a
+backwards-compatible, minimal schema-only fix.
+
+### Tests
+
+Added two regression tests in `src/lib/validation/campaign.test.ts`:
+
+1. Empty `ctaUrl` is treated as absent and parsing succeeds.
+2. A `ctaLabel` with an empty `ctaUrl` still fails validation.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm test` (`vitest run`) | **24 files / 282 tests passed, exit 0** |
+| `npm run typecheck` (`tsc --noEmit`) | **exit 0** |
+| `npm run lint` (`eslint`) | **exit 0** (2 pre-existing `@next/next/no-img-element` warnings in unrelated files) |
+
+### Affected files
+
+- `src/lib/validation/campaign.ts` — `ctaUrl` preprocessing.
+- `src/lib/validation/campaign.test.ts` — regression tests.
+- `memory-bank/progress.md` — this record.
+
+---
 
 ### Live HTTP probe
 
@@ -936,6 +977,119 @@ and a live job — so either `.env` changed since, or the still-running dev serv
 (node started 20:48) holds an older connection string. Worth confirming which
 database the dev server is actually using before the next manual test; it was not
 resolved here and `.env` was not touched.
+
+## Unified Content Block (RICH) — 2026-09-06
+
+Target Nomor's message editor now configures a **single content block** — up to
+two images, the message text, and up to three buttons — delivered to each
+recipient as exactly one WhatsApp message, regardless of the block's shape.
+
+### Schema
+
+Migration `20260908000000_unified_content_block` is purely additive and reverses
+cleanly: it only adds nullable columns and one enum value, and never drops or
+rewrites the legacy `media*` / `cta*` columns.
+
+| Table | New columns |
+| --- | --- |
+| `Campaign` | `image1Key`, `image1Mime`, `image2Key`, `image2Mime`, `buttons` |
+| `BlastJob` (immutable snapshot) | `snapshotImage1Key`, `snapshotImage1Mime`, `snapshotImage2Key`, `snapshotImage2Mime`, `snapshotButtons` |
+
+`MessageType` / `snapshotMessageType` gain a `RICH` value; `TEXT` / `IMAGE` /
+`BUTTON` remain so pre-block allocations and in-flight jobs keep sending what they
+always sent. The migration backfills `image1*` from `media*` and `buttons` from
+`cta*` (and the `snapshot*` mirrors), but does **not** promote `messageType` to
+`RICH` — the legacy sender path stays in effect until an admin saves the
+allocation again, so nothing about an existing allocation's deliveries changes.
+
+### Content planner
+
+`src/lib/whatsapp/content.ts` turns a block into the WhatsApp shape that carries
+it (`planContent`), guards malformed rows at read time (`parseButtons`), and
+stays pure — no Baileys import, no filesystem, no network — so it is unit
+testable in isolation:
+
+| images | buttons | plan | WhatsApp shape |
+| --- | --- | --- | --- |
+| 0 | 0 | `TEXT` | conversation |
+| 1 | 0 | `IMAGE` | image + caption |
+| 0 | 1..3 | `BUTTONS` | interactive, no header |
+| 1 | 1..3 | `BUTTONS` | interactive, image header |
+| 2 | 0..3 | `CAROUSEL` | 2-card carousel, buttons on the first card |
+
+Incomplete parts are dropped rather than thrown: a block whose second image lost
+its mime type still sends as a one-image message instead of failing the whole
+recipient. The ceilings `MAX_CONTENT_IMAGES = 2` and `MAX_CONTENT_BUTTONS = 3`
+are enforced in the Zod schema, the planner, and the admin UI.
+
+### Send path
+
+- `src/worker/delivery-runner.ts` reads a `RICH` job's block off the
+  `snapshotImage*` / `snapshotButtons` columns and continues to translate a
+  legacy job's single `snapshotMedia*` / `snapshotCta*` snapshot, so jobs
+  created before the change keep delivering unchanged.
+- `src/lib/whatsapp/adapter.ts` renders the plan through `renderPlan`; the whole
+  block is dispatched as exactly one send in every shape.
+- Callers never choose a Baileys shape — `src/lib/whatsapp/types.ts` exposes the
+  block (`OutgoingMessage` carrying `images` + `buttons`) as the only outbound
+  surface, so the library stays swappable behind the adapter boundary.
+
+### Validation rules
+
+`src/lib/validation/campaign.ts` extends the allocation schema with `image1*`,
+`image2*`, and `buttons`, and layers cross-field rules on top:
+
+- `image1Key` requires `image1Mime`; `image2Key` requires `image2Mime` — each
+  key travels with its own content type so the sender never guesses a mime.
+- `image2Key` requires `image1Key` (a lone second image would silently become
+  the only image).
+- Legacy refinements retained: `IMAGE` still needs an image, `BUTTON` still
+  needs a label+URL.
+- `normalizeCampaignContent` upgrades a pre-block `mediaKey` / `ctaLabel`
+  payload onto the block, so an old form post, an old API client, and the
+  migration backfill all converge on the one shape.
+
+Button schema (`contentButtonSchema`): each button is
+`{ variant: URL | REPLY | COPY | CALL, label, value? }`.
+
+- `label` is required, 1..64 chars.
+- `value` carries the payload and is required for every variant **except
+  `REPLY`** (whose reply id is derived server-side). Per-variant messages:
+  URL → "Enter the button URL"; CALL → "Enter the phone number to call"; COPY →
+  "Enter the code to copy".
+- `URL` values are validated as URLs; `CALL` values must match
+  `/^\+?[0-9\s()-]{6,24}$/`.
+- The array is capped at 3 buttons (`contentButtonsSchema`).
+
+### Admin surface and media endpoint
+
+- `src/components/admin/campaign-form-shared.tsx` exports the shared
+  `MAX_CONTENT_IMAGES` / `MAX_CONTENT_BUTTONS` constants and the button-variant
+  options reused across the campaign forms.
+- `src/components/admin/allocation-config-card.tsx` renders `RICH` as "Blok
+  konten" with the `LayoutTemplate` icon.
+- Campaign media lives in private storage and must never be reachable from
+  `public/`, so a new **ADMIN-only** route `GET /api/admin/media/[...key]`
+  (`src/app/api/admin/media/[...key]/route.ts`) serves image keys for the editor
+  preview. It requires an active `ADMIN` session, restricts every path segment
+  to `[A-Za-z0-9._-]`, requires the `campaign-media/` prefix, allows only image
+  extensions, and rejects any key that escapes the storage root — traversal
+  attempts return 404 rather than the file. Responses are
+  `Cache-Control: private`, `X-Content-Type-Options: nosniff`.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `src/lib/whatsapp/content.test.ts` | 13 cases pinning the planner table, image/button ceil and blank handling, and `parseButtons` read-side guards |
+| `src/lib/whatsapp/adapter.test.ts` | content-block delivery cases asserting both the provider call the adapter chose and that one block leaves as exactly one message |
+| `src/lib/validation/*.test.ts` | extended for the new image-pairing and button-value refinements |
+| `npm test` (`vitest run`) | **24 files / 280 tests passed**, 80.1s, exit 0 |
+| `npm run build` | exit 0 (per the implementation pass; routes unchanged in count) |
+
+Not verified here: no send was exercised against a real device — the block is
+covered by planner/adapter unit tests only. A live send remains the open item
+listed under "Real-Device Pairing Fixes" and gap 2.
 
 ## Known Gaps
 

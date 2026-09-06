@@ -49,9 +49,9 @@ export function ContentBlockPreview({
             }
           >
             {images.map((key) => (
-              // eslint-disable-next-line @next/next/no-img-element -- private media
-              // is streamed through an authenticated route, so the Next.js image
-              // optimiser cannot fetch it.
+              // Private media is streamed through an authenticated route, so
+              // the Next.js image optimiser cannot fetch it; a plain <img> is
+              // intentional here.
               <img
                 key={key}
                 src={`/api/admin/media/${key.split(/[\\/]/).map(encodeURIComponent).join("/")}`}

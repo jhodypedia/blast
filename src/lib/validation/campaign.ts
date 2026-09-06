@@ -150,7 +150,14 @@ const campaignBaseSchema = z.object({
   mediaMime: z.string().trim().max(127).optional(),
   mediaCaption: z.string().trim().max(1024).optional(),
   ctaLabel: z.string().trim().max(64).optional(),
-  ctaUrl: z.string().trim().url("Enter a valid URL").max(2048).optional(),
+  // An empty CTA URL must read as "no CTA", not as an invalid URL. The admin
+  // form seeds `ctaUrl: ""` and FormData returns "" for an unfilled input, but
+  // `.optional()` only accepts `undefined` — so an empty string is normalised to
+  // `undefined` before the `.url()` check, mirroring `customCode` in device.ts.
+  ctaUrl: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().url("Enter a valid URL").max(2048).optional(),
+  ),
 
   targetListId: cuidSchema,
   deviceModePolicy: z.enum(["SINGLE_DEVICE", "ALL_DEVICES"]),
