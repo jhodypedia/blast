@@ -41,10 +41,9 @@ function formatCountdown(ms: number): string {
 /**
  * Device pairing modal.
  *
- * Pair Code is the default tab and requires a phone number first. Selecting the
- * QR tab creates the session immediately without any number input; the request
- * is guarded by a ref so repeated tab switches or re-renders cannot open a
- * second concurrent session for the same device.
+ * Neither QR nor Pair Code methods auto-request connections. Users must
+ * explicitly click their respective request buttons. The QR session request
+ * is guarded by a ref so repeated clicks do not open concurrent sessions.
  */
 export function DevicePairingModal({
   deviceId,
@@ -76,8 +75,8 @@ export function DevicePairingModal({
   );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const requestRef = useRef<AbortController | null>(null);
-  // One auto QR session per modal opening. Reset only when the modal closes or
-  // the operator asks for a refresh explicitly.
+  // Track whether QR session has been requested during THIS modal session.
+  // Reset when modal closes to allow fresh request on next open.
   const qrRequestedRef = useRef(false);
   const qrFormRef = useRef<HTMLFormElement>(null);
 
@@ -85,9 +84,11 @@ export function DevicePairingModal({
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
+    // Reset QR request tracker when modal opens - ensures fresh start each time
+    qrRequestedRef.current = false;
     return () => {
       previous?.focus();
-      // Closing ends the attempt, so the next opening may create a session again.
+      // Closing resets state for next connection attempt
       qrRequestedRef.current = false;
       setMethod(defaultMethod);
       setValidationError(null);
@@ -139,7 +140,10 @@ export function DevicePairingModal({
     if (pairState.status === "error") toast.error(pairState.message);
   }, [pairState, refreshStatus]);
 
-  /** Creates the QR session. Idempotent for one modal opening. */
+  /**
+   * Creates the QR session only when user explicitly clicks the request button.
+   * Prevents duplicate concurrent requests via ref guard.
+   */
   const requestQrSession = useCallback(() => {
     if (qrRequestedRef.current) return;
     qrRequestedRef.current = true;
@@ -148,16 +152,6 @@ export function DevicePairingModal({
     // which breaks because the return value is not a valid React child).
     qrFormRef.current?.requestSubmit();
   }, []);
-
-  // Selecting the QR tab creates the session on its own: the operator never has
-  // to press a button or type a number first. Deferred to a task so the action
-  // dispatch does not run synchronously inside the effect body.
-  useEffect(() => {
-    if (!open || method !== "QR") return;
-    if (payload?.device.status === "CONNECTED") return;
-    const handle = window.setTimeout(() => requestQrSession(), 0);
-    return () => window.clearTimeout(handle);
-  }, [open, method, payload?.device.status, requestQrSession]);
 
   // The rendered QR is keyed by its payload so a stale image is filtered out
   // during render instead of being cleared with a synchronous setState.
@@ -204,9 +198,15 @@ export function DevicePairingModal({
 
   function validatePhone() {
     if (method !== "PAIR_CODE") return true;
-    const parsed = parsePhoneNumberFromString(phoneNumber);
+    
+    // Support numbers with or without leading + sign
+    const normalizedInput = phoneNumber.trim().startsWith("+") 
+      ? phoneNumber.trim() 
+      : `+${phoneNumber.trim()}`;
+    
+    const parsed = parsePhoneNumberFromString(normalizedInput);
     const valid = Boolean(parsed?.isValid());
-    setValidationError(valid ? null : "Masukkan nomor WhatsApp yang valid (contoh: +6281234567890).");
+    setValidationError(valid ? null : "Masukkan nomor WhatsApp yang valid (contoh: 6281234567890).");
     return valid;
   }
 
@@ -267,21 +267,21 @@ export function DevicePairingModal({
           >
             <input type="hidden" name="deviceId" value={deviceId} />
             <input type="hidden" name="method" value="PAIR_CODE" />
-            <Label htmlFor={`pair-phone-${deviceId}`}>Nomor WhatsApp lengkap</Label>
+            <Label htmlFor={`pair-phone-${deviceId}`}>Nomor WhatsApp</Label>
             <div className="space-y-2">
               <Input
                 id={`pair-phone-${deviceId}`}
                 name="phoneNumber"
                 value={phoneNumber}
                 onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="+6281234567890"
+                placeholder="6281234567890"
                 inputMode="tel"
                 autoComplete="tel"
                 aria-invalid={Boolean(validationError)}
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                Masukkan nomor lengkap dengan kode negara, contoh: +6281234567890, +14155552671, +447911123456
+                Masukkan nomor lengkap dengan kode negara (tanpa tanda +), contoh: 6281234567890 atau 14155552671
               </p>
             </div>
             {validationError ? (
@@ -292,23 +292,53 @@ export function DevicePairingModal({
             <Button type="submit" loading={pairPending} className="w-full">Minta kode pairing</Button>
           </form>
         ) : (
-          <div className="mt-4 space-y-2">
-            <p className="border-4 border-black bg-info px-3 py-2 text-xs font-bold text-info-foreground">
-              Sesi QR dibuat otomatis saat tab ini dibuka. Pindai kode di bawah
-              dari WhatsApp &rsaquo; Perangkat tertaut.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              loading={pairPending}
-              onClick={() => {
-                qrRequestedRef.current = false;
-                requestQrSession();
-              }}
-            >
-              <QrCode aria-hidden="true" /> Muat ulang QR Code
-            </Button>
+          <div className="mt-4 space-y-3">
+            {!challenge ? (
+              <>
+                <p className="border-4 border-black bg-info px-3 py-2 text-xs font-bold text-info-foreground">
+                  Klik tombol di bawah untuk memulai sesi QR Code, lalu pindai dari{" "}
+                  WhatsApp &rsaquo; Perangkat tertaut.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  loading={pairPending}
+                  onClick={() => {
+                    // Explicit reset before request - ensures button can be clicked again after closing modal
+                    qrRequestedRef.current = false;
+                    requestQrSession();
+                  }}
+                >
+                  <QrCode aria-hidden="true" /> Buat Sesi QR Code
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold uppercase text-foreground">
+                  Pindai QR Code ini dari WhatsApp &rsaquo; Perangkat tertaut
+                </p>
+                {remainingMs !== null && !expired ? (
+                  <span className="border-2 border-black bg-warning px-2 py-0.5 text-xs font-black uppercase text-warning-foreground">
+                    Berlaku {formatCountdown(remainingMs)}
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  loading={pairPending}
+                  onClick={() => {
+                    // Reset and refresh QR session on user click
+                    qrRequestedRef.current = false;
+                    requestQrSession();
+                  }}
+                >
+                  <RefreshCw aria-hidden="true" /> Muat Ulang QR Code
+                </Button>
+              </>
+            )}
           </div>
         )}
 

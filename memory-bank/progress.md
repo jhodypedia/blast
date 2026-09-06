@@ -1170,4 +1170,168 @@ listed under "Real-Device Pairing Fixes" and gap 2.
    to confirm focus rings and order, and take a Lighthouse run on one dashboard
    and one admin page.
 
+---
+
+## Auto-Detect Phone Number Code (2026-09-07)
+
+Device pairing now accepts **full phone numbers with country code** instead of
+separate country-code selector and local-number inputs.
+
+### Changes
+
+- **UI (`src/components/devices/device-pairing-modal.tsx`)**:
+  - Single input field for complete phone number (e.g. `+6281234567890`)
+  - Removed country-code dropdown and `countryCode` state
+  - Updated placeholder and helper text to show international format examples
+  - Validation uses `parsePhoneNumberFromString()` without explicit country fallback
+
+- **Schema (`src/lib/validation/device.ts`)**:
+  - Removed `countryCode` field from `pairDeviceSchema`
+  - `phoneNumber` is now the only identifier for pair-code pairing
+
+- **Server Action (`src/app/actions/devices.ts`)**:
+  - No longer passes `countryCode` to `requestPairing`
+  - Frontend sends full number; backend normalizes server-side
+
+- **Device Service (`src/lib/device/service.ts`)**:
+  - `requestPairing` type signature updated to remove `countryCode`
+  - `normalizePhoneNumber` now uses `defaultCountry` from settings as fallback
+  - Numbers with `+` or `00` prefix retain their original country code
+  - Local numbers (no prefix) receive the configured default country
+
+- **Phone Normalization (`src/lib/phone/normalize.ts`)**:
+  - Already supports auto-detection via `hasInternationalPrefix`
+  - `+6281234567890` → Indonesia (62)
+  - `+14155552671` → US (1)
+  - `+447911123456` → UK (44)
+  - `006281234567890` → Indonesia (62) (ITU 00 prefix)
+  - `081234567890` → uses `defaultCountry` from settings
+
+### Testing & Verification
+
+| Check | Result |
+| --- | --- |
+| `src/lib/validation/device.test.ts` | 13 tests passed |
+| `src/lib/phone/normalize.test.ts` | 13 tests passed |
+| `npm run lint` | exit 0 |
+| `npm run typecheck` (`tsc --noEmit`) | exit 0 |
+
+### Behavior Summary
+
+| User Input | Result |
+| --- | --- |
+| `+6281234567890` | Uses Indonesia code (62) |
+| `+14155552671` | Uses US code (1) |
+| `+447911123456` | Uses UK code (44) |
+| `006281234567890` | Uses Indonesia code (62) |
+| `081234567890` | Uses admin-configured `defaultCountryCode` setting |
+| `+62 812 3456 7890` | Strips formatting, uses Indonesia code (62) |
+
+---
+
+## Explicit Session Generation & Flexible Phone Input (2026-09-07b)
+
+Updated pairing modal to require explicit user action before generating WhatsApp sessions, and to accept phone numbers with or without the leading `+` sign.
+
+### Changes
+
+#### UI - `src/components/devices/device-pairing-modal.tsx`:
+
+1. **Explicit Session Generation**:
+   - Removed automatic QR session creation on tab switch
+   - Added "Buat Sesi QR Code" button for user-initiated session generation
+   - QR tab now shows initial state until user clicks the button
+   - Added refresh functionality to regenerate expired QR codes
+
+2. **Flexible Phone Number Input**:
+   - Updated validation to normalize input: if number doesn't start with `+`, add it automatically
+   - Changed placeholder from `+6281234567890` to `6281234567890`
+   - Updated helper text to clarify "tanpa tanda +"
+   - Label changed from "Nomor WhatsApp lengkap" to "Nomor WhatsApp"
+
+#### Before vs After:
+
+**QR Code Tab - Before:**
+```
+User opens modal → Clicks QR tab → Session auto-generated immediately
+```
+
+**QR Code Tab - After:**
+```
+User opens modal → Clicks QR tab → Sees "Buat Sesi QR Code" button → 
+Clicks button → Session generated
+```
+
+**Pair Code Input - Before:**
+```
+Input: "+6281234567890" only (with + required)
+Placeholder: "+6281234567890"
+Error message: "Masukkan nomor WhatsApp yang valid (contoh: +6281234567890)."
+```
+
+**Pair Code Input - After:**
+```
+Input: "6281234567890" OR "+6281234567890" both work
+Placeholder: "6281234567890"
+Validation: Adds "+" prefix automatically if missing
+Error message: "Masukkan nomor WhatsApp yang valid (contoh: 6281234567890)."
+Helper text: "Masukkan nomor lengkap dengan kode negara (tanpa tanda +), contoh: 6281234567890 atau 14155552671"
+```
+
+### UX Benefits
+
+1. **Clearer Flow**: Users understand they need to explicitly request a session
+2. **Reduces Accidental Sessions**: Prevents creating sessions when just browsing tabs
+3. **More Intuitive Input**: Many users don't type `+` by default; now both formats work
+4. **Better Feedback**: Shows current status and expiration time for QR codes
+
+### Testing & Verification
+
+| Check | Result |
+| --- | --- |
+| `src/lib/validation/device.test.ts` | ✅ 13 tests passed |
+| `src/lib/phone/normalize.test.ts` | ✅ 13 tests passed |
+| All unit tests | ✅ **24 files / 282 tests passed** |
+| `npm run lint` | ✅ exit 0 |
+| `npm run typecheck` (`tsc --noEmit`) | ✅ exit 0 |
+
+### Code Flow - QR Tab
+
+```
+1. Modal opens with QR tab selected
+2. State: !challenge, show "Buat Sesi QR Code" button
+3. User clicks button
+4. Hidden form submits via qrFormRef?.requestSubmit()
+5. pairDeviceAction runs with method="QR"
+6. Server creates session in challenge-store
+7. Polling detects challenge exists
+8. UI updates to show QR code + "Muat Ulang" button
+9. If QR expires, can click refresh to regenerate
+```
+
+### Code Flow - Pair Code Tab
+
+```
+1. Modal opens with Pair Code tab selected
+2. Input field: accepts "6281234567890" or "+6281234567890"
+3. On submit, validatePhone():
+   - Normalizes: adds "+" prefix if missing
+   - Validates using libphonenumber-js
+4. If valid, hidden form submits via action={pairAction}
+5. pairDeviceAction receives phoneNumber (may have + or not)
+6. Server normalizes using normalizePhoneNumber()
+7. Backend stores normalizedNumber (always E.164 format, no +)
+8. Challenge stored in Redis with expiry
+9. Polling detects challenge
+10. UI shows pair code + expiry countdown
+```
+
+### Security Improvements
+
+- No auto-generation prevents rapid-fire session requests
+- Explicit button provides clear confirmation step
+- Same idempotency guards still apply via `qrRequestedRef.current`
+- Rate limiting unchanged at server level
+
+
 
